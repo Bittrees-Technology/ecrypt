@@ -21,6 +21,8 @@ Supported networks:
 - Base mainnet (chain ID `8453`)
 - Robinhood mainnet (chain ID `4663`)
 
+Selecting a network condition requests that an already connected wallet switch to that chain. When supported by the wallet, eCrypt can add Base or Robinhood using their official public network parameters before retrying the switch. The wallet may require confirmation or reject either request.
+
 ## How it protects a document
 
 1. The browser generates a random AES-256-GCM document key.

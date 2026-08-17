@@ -306,6 +306,9 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /readOnly value=\{unlockableText\}/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /network-picker/);
+  assert.match(appSource, /wallet_switchEthereumChain/);
+  assert.match(appSource, /wallet_addEthereumChain/);
+  assert.match(appSource, /rpc\.mainnet\.chain\.robinhood\.com/);
   assert.match(appSource, /explorerAddressUrl/);
   assert.match(appSource, /explorer-address/);
   assert.match(appSource, /\/address\/\$\{address\}/);
