@@ -1115,7 +1115,7 @@ export default function EcryptApp() {
                       <div><span>Policy</span><strong>{openedPackage.policy.mode === "any" ? "Any condition" : "All conditions"}</strong></div>
                       <div className="summary-rule">
                         <span className="summary-kind">CREATOR</span>
-                        <ExplorerAddress address={openedPackage.author} suffix=" · always eligible" />
+                        <ExplorerAddress address={openedPackage.author} />
                       </div>
                       {openedPackage.policy.rules.map((rule) => (
                         <div className="summary-rule" key={rule.id}>
