@@ -2,6 +2,7 @@
 
 import {
   ArrowRight,
+  BookOpen,
   Braces,
   Check,
   Copy,
@@ -47,7 +48,7 @@ declare global {
   }
 }
 
-type Mode = "compose" | "open";
+type Mode = "compose" | "open" | "about";
 type Notice = { tone: "error" | "success" | "info"; text: string } | null;
 type PreviewMode = "continuous" | "pages";
 type PreviewPiece =
@@ -575,6 +576,153 @@ function DraftPreview({ value, title }: { value: string; title: string }) {
   );
 }
 
+function AboutPanel() {
+  return (
+    <section
+      className="about-panel"
+      id="about-panel"
+      role="tabpanel"
+      aria-labelledby="about-tab"
+      tabIndex={0}
+    >
+      <header className="about-intro">
+        <div>
+          <span className="eyebrow">Protocol / explained</span>
+          <h2>A readable document with encrypted holes.</h2>
+        </div>
+        <p>
+          eCrypt leaves ordinary text readable and encrypts only the passages you mark. The result can travel through email, chat, a document, a share link, or a saved package. A qualifying wallet can reveal the protected passages later without writing a transaction to a blockchain.
+        </p>
+        <div className="about-facts" aria-label="eCrypt at a glance">
+          <div><strong>03</strong><span>supported networks</span></div>
+          <div><strong>04</strong><span>access-rule types</span></div>
+          <div><strong>00</strong><span>onchain writes</span></div>
+        </div>
+      </header>
+
+      <section className="about-flow" aria-labelledby="about-flow-title">
+        <div className="about-section-heading">
+          <span className="eyebrow">Create to reveal</span>
+          <h3 id="about-flow-title">How one message moves through eCrypt</h3>
+        </div>
+        <div className="about-flow-grid">
+          <article>
+            <span>01 / Mark</span>
+            <h4>Choose the private passages</h4>
+            <p>Write or paste the document, then select text or wrap it in <code>[[double brackets]]</code>. Everything outside those markers remains public.</p>
+          </article>
+          <article>
+            <span>02 / Encrypt</span>
+            <h4>Seal them in the browser</h4>
+            <p>Your browser creates a random 256-bit document key and encrypts each marked passage with AES-256-GCM. A separately salted SHA-256 fingerprint replaces each hidden passage inline.</p>
+          </article>
+          <article>
+            <span>03 / Carry</span>
+            <h4>Keep the complete package</h4>
+            <p>The portable unlock data contains the public text, ciphertext, salts, fingerprints, creator address, access policy, and protected document key. It can be copied, linked, or downloaded.</p>
+          </article>
+          <article>
+            <span>04 / Reveal</span>
+            <h4>Prove access, then decrypt</h4>
+            <p>The reader signs a short-lived message. eCrypt verifies the creator or checks the live policy, returns the document key when eligible, and the browser decrypts and verifies every passage.</p>
+          </article>
+        </div>
+      </section>
+
+      <div className="about-detail-grid">
+        <section className="about-card" aria-labelledby="about-crypto-title">
+          <span className="eyebrow">Protection layers</span>
+          <h3 id="about-crypto-title">What each technology does</h3>
+          <dl className="about-definition-list">
+            <div><dt>AES-256-GCM</dt><dd>Encrypts each private passage and detects ciphertext tampering. This is what provides confidentiality.</dd></div>
+            <div><dt>Salted SHA-256</dt><dd>Creates the public inline fingerprint used to verify revealed text. A hash is one-way evidence, not encryption.</dd></div>
+            <div><dt>Wallet signature</dt><dd>Proves control of an address using an expiring authorization message. It does not approve a payment or transaction.</dd></div>
+            <div><dt>Live chain reads</dt><dd>Check the wallet’s current token or NFT eligibility on Ethereum, Base, or Robinhood when the reader asks to reveal.</dd></div>
+          </dl>
+        </section>
+
+        <section className="about-card" aria-labelledby="about-policy-title">
+          <span className="eyebrow">Access policy</span>
+          <h3 id="about-policy-title">Who can reveal a message</h3>
+          <p>Up to five rules can be combined so that <strong>any</strong> rule or <strong>all</strong> rules must match. Eligibility is evaluated when the document is opened, so transferring a token can change access.</p>
+          <ul className="about-rule-list">
+            <li><strong>Specific wallet</strong><span>One named EVM address.</span></li>
+            <li><strong>ERC-20</strong><span>A minimum token balance.</span></li>
+            <li><strong>ERC-721</strong><span>Any NFT from a contract, or one optional token ID.</span></li>
+            <li><strong>ERC-1155</strong><span>One optional token ID or any ID from a contract, with a minimum balance.</span></li>
+          </ul>
+          <div className="about-callout"><Wallet size={17} aria-hidden="true" /><p><strong>Creator access is built in.</strong> The wallet that creates the package can decrypt it without satisfying the reader policy, provided the complete package and eCrypt service remain available.</p></div>
+        </section>
+      </div>
+
+      <section className="about-formats" aria-labelledby="about-formats-title">
+        <div className="about-section-heading">
+          <span className="eyebrow">Portable formats</span>
+          <h3 id="about-formats-title">What to copy or save</h3>
+        </div>
+        <div className="about-format-grid">
+          <article><span>Recommended</span><h4>Copy all</h4><p>The readable redacted message and complete unlock-data block together. Paste the entire copy into eCrypt.</p></article>
+          <article><span>Public display</span><h4>Redacted message only</h4><p>Public text and inline SHA-256 fingerprints. It is easy to share, but cannot be decrypted by itself.</p></article>
+          <article><span>Compact carrier</span><h4>Unlock data only</h4><p>Despite the button’s “unlock hash” label, this is the complete encrypted package—not merely a hash. It is enough to begin an authorized reveal.</p></article>
+          <article><span>Saved file or link</span><h4>JSON and share link</h4><p>The <code>.ecrypt.json</code> file and URL-fragment share link carry the same package in forms suited to backup or direct sharing.</p></article>
+        </div>
+      </section>
+
+      <div className="about-detail-grid about-privacy-grid">
+        <section className="about-card" aria-labelledby="about-data-title">
+          <span className="eyebrow">Data boundaries</span>
+          <h3 id="about-data-title">What reaches the eCrypt service</h3>
+          <ul className="about-bullet-list">
+            <li><strong>Plaintext does not.</strong> The full document and revealed passages stay in the browser.</li>
+            <li><strong>A random document key does.</strong> eCrypt receives it over HTTPS to bind it to the creator and policy, then returns it only after an authorized reveal.</li>
+            <li><strong>Policy checks disclose context.</strong> Wallet, contract, network, and balance queries are sent to eCrypt’s blockchain data provider when eligibility is checked.</li>
+            <li><strong>The package is visible to its holder.</strong> It exposes public text, ciphertext, hashes, salts, metadata, creator, and policy—but not decrypted passages.</li>
+          </ul>
+        </section>
+
+        <section className="about-card" aria-labelledby="about-cost-title">
+          <span className="eyebrow">Networks / cost</span>
+          <h3 id="about-cost-title">Gasless by default</h3>
+          <p>Creating and revealing use wallet signatures and read-only blockchain calls. eCrypt does not publish the document or its hash onchain, so the normal flow has no gas fee. Your wallet may still ask permission to connect, sign, add a network, or switch networks.</p>
+          <div className="about-network-row" aria-label="Supported networks">
+            <span>Ethereum</span><span>Base</span><span>Robinhood</span>
+          </div>
+          <p className="about-small-copy">eCrypt is service-assisted rather than fully decentralized: the protected document key depends on eCrypt’s server-side wrapping key and availability.</p>
+        </section>
+      </div>
+
+      <section className="about-warning" aria-labelledby="about-warning-title">
+        <TriangleAlert size={24} aria-hidden="true" />
+        <div>
+          <span className="eyebrow">Important limits</span>
+          <h3 id="about-warning-title">Encryption cannot correct an unsafe sharing decision.</h3>
+          <ul>
+            <li>Anyone with the complete package can attempt the unlock process, but only the creator or a currently eligible wallet should receive the key.</li>
+            <li>There is no account history or recovery vault. Lose every complete copy and the message is unrecoverable—even for eCrypt.</li>
+            <li>A holder of the complete package can use its salt and hash to test guesses about short, predictable secrets. Avoid treating an inline hash alone as secrecy; the encrypted ciphertext is the protection.</li>
+            <li>A compromised wallet, browser, extension, clipboard, device, or recipient can expose revealed text.</li>
+            <li>This is experimental software and has not been presented as independently audited or post-quantum secure.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="about-faq" aria-labelledby="about-faq-title">
+        <div className="about-section-heading">
+          <span className="eyebrow">Quick answers</span>
+          <h3 id="about-faq-title">Common questions</h3>
+        </div>
+        <div className="about-faq-list">
+          <details><summary>Can someone decrypt just because they have the unlock data?</summary><p>No. The unlock data lets them begin the process. They still need the creator wallet or a wallet that currently satisfies the package’s policy.</p></details>
+          <details><summary>Does eCrypt save my document or a history?</summary><p>No document vault or wallet history is currently stored. Keep Copy all, the unlock-data block, a share link, or the downloaded JSON package somewhere you control.</p></details>
+          <details><summary>Does a reader need to pay gas?</summary><p>No. The wallet signs a message and eCrypt makes read-only ownership checks. There is no blockchain transaction in the standard create or reveal flow.</p></details>
+          <details><summary>Is the visible SHA-256 value the encrypted text?</summary><p>No. It is a salted integrity fingerprint. The actual protected text is AES-encrypted ciphertext inside the complete unlock package.</p></details>
+          <details><summary>Is eCrypt quantum-safe?</summary><p>No post-quantum claim is made. AES-256 has a substantial security margin, but ordinary EVM wallet signatures are not post-quantum cryptography.</p></details>
+        </div>
+      </section>
+    </section>
+  );
+}
+
 export default function EcryptApp() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const packageFileRef = useRef<HTMLInputElement>(null);
@@ -1032,8 +1180,10 @@ export default function EcryptApp() {
         <section className="tool-section" aria-label="eCrypt document tool">
           <div className="mode-switch" role="tablist" aria-label="Document action">
             <button
+              id="compose-tab"
               role="tab"
               aria-selected={mode === "compose"}
+              aria-controls="compose-panel"
               className={mode === "compose" ? "active" : ""}
               onClick={() => setMode("compose")}
               type="button"
@@ -1041,13 +1191,26 @@ export default function EcryptApp() {
               <FileLock2 size={17} /> Create &amp; redact <span>01</span>
             </button>
             <button
+              id="open-tab"
               role="tab"
               aria-selected={mode === "open"}
+              aria-controls="open-panel"
               className={mode === "open" ? "active" : ""}
               onClick={() => setMode("open")}
               type="button"
             >
               <KeyRound size={17} /> Paste &amp; decrypt <span>02</span>
+            </button>
+            <button
+              id="about-tab"
+              role="tab"
+              aria-selected={mode === "about"}
+              aria-controls="about-panel"
+              className={mode === "about" ? "active" : ""}
+              onClick={() => setMode("about")}
+              type="button"
+            >
+              <BookOpen size={17} /> About <span>03</span>
             </button>
           </div>
 
@@ -1060,7 +1223,7 @@ export default function EcryptApp() {
           )}
 
           {mode === "compose" ? (
-            <div className="workspace-grid">
+            <div className="workspace-grid" id="compose-panel" role="tabpanel" aria-labelledby="compose-tab" tabIndex={0}>
               <div className="workspace-main">
                 <div className="panel-heading">
                   <div>
@@ -1229,8 +1392,8 @@ export default function EcryptApp() {
                 </section>
               )}
             </div>
-          ) : (
-            <div className="open-workspace">
+          ) : mode === "open" ? (
+            <div className="open-workspace" id="open-panel" role="tabpanel" aria-labelledby="open-tab" tabIndex={0}>
               {!openedPackage ? (
                 <div className="open-empty">
                   <div className="open-icon"><Upload size={26} /></div>
@@ -1298,6 +1461,8 @@ export default function EcryptApp() {
                 </div>
               )}
             </div>
+          ) : (
+            <AboutPanel />
           )}
         </section>
 
