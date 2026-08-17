@@ -62,6 +62,7 @@ test("server-renders the finished eCrypt product", async () => {
   assert.match(html, /Robinhood/);
   assert.doesNotMatch(html, /Robinhood Chain/);
   assert.match(html, /Paste &amp; decrypt/);
+  assert.match(html, /About/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -303,6 +304,15 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /Upload \.ecrypt\.json/);
   assert.match(appSource, /handlePackageFile/);
   assert.match(appSource, /Document title <span>\(optional\)<\/span>/);
+  assert.match(appSource, /type Mode = "compose" \| "open" \| "about"/);
+  assert.match(appSource, /A readable document with encrypted holes/);
+  assert.match(appSource, /Despite the button’s “unlock hash” label/);
+  assert.match(appSource, /Creator access is built in/);
+  assert.match(appSource, /Gasless by default/);
+  assert.match(appSource, /There is no account history or recovery vault/);
+  assert.match(appSource, /Is eCrypt quantum-safe/);
+  assert.match(stylesheet, /\.about-panel/);
+  assert.match(stylesheet, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(appSource, /Give the document a title before sealing it/);
   assert.doesNotMatch(appSource, /SAMPLE_DOCUMENT|Untitled private document|Untitled encrypted message/);
   assert.match(appSource, /const \[body, setBody\] = useState\(""\)/);
