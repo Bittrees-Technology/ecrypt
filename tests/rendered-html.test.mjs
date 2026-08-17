@@ -258,6 +258,9 @@ test("an any-ID ERC-1155 policy falls back to live transfer logs", async () => {
 
 test("starter-only assets are gone", async () => {
   const packageJson = await readFile(new URL("package.json", projectRoot), "utf8");
+  const appSource = await readFile(new URL("app/EcryptApp.tsx", projectRoot), "utf8");
   assert.doesNotMatch(packageJson, /react-loading-skeleton|site-creator-vinext-starter/);
+  assert.match(appSource, /\[sha256:\$\{segment\.hash\}\]/);
+  assert.match(appSource, /Copy redacted text/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));
 });

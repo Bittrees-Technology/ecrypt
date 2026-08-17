@@ -328,12 +328,21 @@ export default function EcryptApp() {
   const [openedPackage, setOpenedPackage] = useState<EcryptPackage | null>(null);
   const [packageInput, setPackageInput] = useState("");
   const [revealed, setRevealed] = useState<Record<number, string>>({});
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"text" | "link" | null>(null);
 
   const shareUrl = useMemo(() => {
     if (!sealedPackage || typeof window === "undefined") return "";
     const encoded = bytesToBase64Url(encoder.encode(JSON.stringify(sealedPackage)));
     return `${window.location.origin}/#ecrypt=${encoded}`;
+  }, [sealedPackage]);
+
+  const redactedText = useMemo(() => {
+    if (!sealedPackage) return "";
+    return sealedPackage.segments
+      .map((segment) =>
+        segment.kind === "public" ? segment.text : `[sha256:${segment.hash}]`,
+      )
+      .join("");
   }, [sealedPackage]);
 
   useEffect(() => {
@@ -487,7 +496,7 @@ export default function EcryptApp() {
       };
       setSealedPackage(documentPackage);
       setRevealed({});
-      setNotice({ tone: "success", text: "Document sealed. Share the link or download its portable package." });
+      setNotice({ tone: "success", text: "Copyable redacted text is ready. Use the private share link only when someone needs to unlock it." });
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The document could not be sealed." });
     } finally {
@@ -498,10 +507,20 @@ export default function EcryptApp() {
   async function copyShareLink() {
     try {
       await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
+      setCopied("link");
+      window.setTimeout(() => setCopied((current) => (current === "link" ? null : current)), 1800);
     } catch {
       setNotice({ tone: "error", text: "The share link could not be copied. You can select it manually." });
+    }
+  }
+
+  async function copyRedactedText() {
+    try {
+      await navigator.clipboard.writeText(redactedText);
+      setCopied("text");
+      window.setTimeout(() => setCopied((current) => (current === "text" ? null : current)), 1800);
+    } catch {
+      setNotice({ tone: "error", text: "The redacted text could not be copied automatically. You can select it manually." });
     }
   }
 
@@ -589,7 +608,7 @@ export default function EcryptApp() {
               onClick={() => setMode("compose")}
               type="button"
             >
-              <FileLock2 size={17} /> Create &amp; seal <span>01</span>
+              <FileLock2 size={17} /> Create &amp; redact <span>01</span>
             </button>
             <button
               role="tab"
@@ -716,26 +735,36 @@ export default function EcryptApp() {
                 <button className="add-condition" type="button" onClick={addRule}><Plus size={15} /> Add condition</button>
                 <button className="seal-button" type="button" onClick={sealDocument} disabled={busy !== null}>
                   <LockKeyhole size={18} />
-                  {busy === "seal" ? "Sealing document…" : "Seal encrypted document"}
+                  {busy === "seal" ? "Encrypting redactions…" : "Create redacted text"}
                   {busy !== "seal" && <ArrowRight size={18} />}
                 </button>
                 <div className="security-footnote"><ShieldCheck size={16} /><span>AES-256-GCM runs in your browser. The service receives only a random document key, never your plaintext.</span></div>
               </aside>
 
               {sealedPackage && (
-                <section className="sealed-result">
+                <section className="sealed-result copyable-result">
                   <div className="result-copy">
-                    <span className="eyebrow">Sealed / ready to share</span>
-                    <h2>Your private passages are now ciphertext.</h2>
-                    <p>The URL carries the public text, encrypted redactions, policy, and protected key. No document database is required.</p>
-                    <label className="field-label" htmlFor="share-url">Portable share link</label>
-                    <div className="share-field">
-                      <input id="share-url" readOnly value={shareUrl} />
-                      <button type="button" onClick={copyShareLink}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Copied" : "Copy"}</button>
-                    </div>
-                    <button className="download-button" type="button" onClick={() => downloadPackage(sealedPackage)}><Download size={16} /> Download .ecrypt.json</button>
+                    <span className="eyebrow">Redacted text / ready to paste</span>
+                    <h2>Original text, inline hashes.</h2>
+                    <p>Every public character stays in place. Each protected passage is replaced with its full salted SHA-256 hash.</p>
+                    <label className="field-label" htmlFor="redacted-output">Copyable redacted text</label>
+                    <textarea id="redacted-output" className="redacted-output" readOnly value={redactedText} />
+                    <button className="copy-output-button" type="button" onClick={copyRedactedText}>
+                      {copied === "text" ? <Check size={16} /> : <Copy size={16} />}
+                      {copied === "text" ? "Copied redacted text" : "Copy redacted text"}
+                    </button>
+
+                    <details className="package-options">
+                      <summary>Keep an unlockable token-gated version</summary>
+                      <p>The copyable text above is a public proof and cannot be decrypted by itself. Use this share link or package when an eligible wallet should be able to reveal the original passages.</p>
+                      <label className="field-label" htmlFor="share-url">Private share link</label>
+                      <div className="share-field">
+                        <input id="share-url" readOnly value={shareUrl} />
+                        <button type="button" onClick={copyShareLink}>{copied === "link" ? <Check size={16} /> : <Copy size={16} />}{copied === "link" ? "Copied" : "Copy"}</button>
+                      </div>
+                      <button className="download-button" type="button" onClick={() => downloadPackage(sealedPackage)}><Download size={16} /> Download .ecrypt.json</button>
+                    </details>
                   </div>
-                  <RedactedDocument documentPackage={sealedPackage} revealed={{}} />
                 </section>
               )}
             </div>

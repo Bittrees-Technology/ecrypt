@@ -2,6 +2,8 @@
 
 eCrypt creates portable documents with public text and encrypted inline redactions. A reader connects an EVM wallet, signs a fee-free message, and must satisfy the document's current access policy before the protected passages can be decrypted.
 
+The primary result is copyable plain text: the original public text remains unchanged while every protected passage is replaced inline with its full salted `sha256:…` hash. The encrypted share link and `.ecrypt.json` package remain available as secondary options when recipients need to unlock the redactions.
+
 Supported access conditions:
 
 - a specific wallet address
