@@ -610,7 +610,7 @@ export default function EcryptApp() {
     try {
       const address = await ensureWallet();
       const authorization = await walletAuthorization("unlock", address);
-      const response = await api<{ key: string }>("/api/unwrap", {
+      const response = await api<{ key: string; access: "creator" | "policy" }>("/api/unwrap", {
         wrappedKey: openedPackage.wrappedKey,
         policy: openedPackage.policy,
         author: openedPackage.author,
@@ -629,7 +629,12 @@ export default function EcryptApp() {
         if (segment.kind === "encrypted") plaintext[index] = await decryptSecret(segment, key, index);
       }
       setRevealed(plaintext);
-      setNotice({ tone: "success", text: "Access verified. All redactions passed their integrity checks." });
+      setNotice({
+        tone: "success",
+        text: response.access === "creator"
+          ? "Creator wallet verified. All redactions passed their integrity checks."
+          : "Access verified. All redactions passed their integrity checks.",
+      });
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The document could not be unlocked." });
     } finally {
@@ -745,7 +750,7 @@ export default function EcryptApp() {
                   </div>
                   <Network size={20} aria-hidden="true" />
                 </div>
-                <p className="policy-intro">Choose where each token is checked. Your wallet can stay on its current network while signing.</p>
+                <p className="policy-intro">Choose where each token is checked. Your wallet can stay on its current network while signing. The wallet that creates the document can always decrypt it.</p>
 
                 {rules.length > 1 && (
                   <div className="match-toggle" aria-label="Access condition mode">
@@ -886,6 +891,10 @@ export default function EcryptApp() {
                     <p>{Object.keys(revealed).length ? "The plaintext was decrypted locally and every salted hash matched." : "Your wallet signs a message. No transaction or gas fee is required."}</p>
                     <div className="policy-summary">
                       <div><span>Policy</span><strong>{openedPackage.policy.mode === "any" ? "Any condition" : "All conditions"}</strong></div>
+                      <div className="summary-rule">
+                        <span className="summary-kind">CREATOR</span>
+                        <code>{shortAddress(openedPackage.author)} · always eligible</code>
+                      </div>
                       {openedPackage.policy.rules.map((rule) => (
                         <div className="summary-rule" key={rule.id}>
                           <span className="summary-kind">{rule.kind.toUpperCase()}</span>

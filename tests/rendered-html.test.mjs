@@ -10,6 +10,7 @@ process.env.ALCHEMY_API_KEY = "test-key";
 const projectRoot = new URL("../", import.meta.url);
 const account = privateKeyToAccount(`0x${"11".repeat(32)}`);
 const stranger = privateKeyToAccount(`0x${"22".repeat(32)}`);
+const holder = privateKeyToAccount(`0x${"33".repeat(32)}`);
 
 async function worker() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -93,6 +94,35 @@ test("wallet-only policy wraps and unwraps the same document key", async () => {
   assert.equal(unwrapped.key, documentKey);
 });
 
+test("the document creator can always unwrap the document key", async () => {
+  const handler = await worker();
+  const policy = {
+    mode: "any",
+    rules: [{ id: "wallet-reader", kind: "wallet", address: stranger.address }],
+  };
+  const documentKey = Buffer.alloc(32, 8).toString("base64url");
+  const sealAuthorization = await authorization(handler, "seal", account);
+  const wrapResponse = await post(handler, "/api/wrap", {
+    key: documentKey,
+    policy,
+    ...sealAuthorization,
+  });
+  assert.equal(wrapResponse.status, 200);
+  const wrapped = await wrapResponse.json();
+
+  const unlockAuthorization = await authorization(handler, "unlock", account);
+  const unwrapResponse = await post(handler, "/api/unwrap", {
+    wrappedKey: wrapped.wrappedKey,
+    policy: wrapped.policy,
+    author: wrapped.author,
+    ...unlockAuthorization,
+  });
+  assert.equal(unwrapResponse.status, 200);
+  const unwrapped = await unwrapResponse.json();
+  assert.equal(unwrapped.key, documentKey);
+  assert.equal(unwrapped.access, "creator");
+});
+
 test("an unauthorized wallet cannot unwrap the document key", async () => {
   const handler = await worker();
   const policy = {
@@ -149,7 +179,7 @@ test("an ERC-1155 policy can authorize ownership of any token ID", async () => {
     const url = new URL(String(input));
     ownershipRequests.push(url.pathname);
     if (url.pathname.endsWith("/getNFTsForOwner")) {
-      assert.equal(url.searchParams.get("owner"), account.address);
+      assert.equal(url.searchParams.get("owner"), holder.address);
       assert.equal(url.searchParams.get("contractAddresses[]"), contract);
       return Response.json({
         ownedNfts: [
@@ -172,7 +202,7 @@ test("an ERC-1155 policy can authorize ownership of any token ID", async () => {
   };
 
   try {
-    const unlockAuthorization = await authorization(handler, "unlock", account);
+    const unlockAuthorization = await authorization(handler, "unlock", holder);
     const unwrapResponse = await post(handler, "/api/unwrap", {
       wrappedKey: wrapped.wrappedKey,
       policy: wrapped.policy,
@@ -244,7 +274,7 @@ test("an any-ID ERC-1155 policy falls back to live transfer logs", async () => {
   };
 
   try {
-    const unlockAuthorization = await authorization(handler, "unlock", account);
+    const unlockAuthorization = await authorization(handler, "unlock", holder);
     const unwrapResponse = await post(handler, "/api/unwrap", {
       wrappedKey: wrapped.wrappedKey,
       policy: wrapped.policy,

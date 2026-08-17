@@ -11,6 +11,7 @@ Supported access conditions:
 - ownership of any token, or one token ID, from an ERC-721 collection
 - ownership of any token ID, or one specific token ID, from an ERC-1155 contract, with a minimum balance per ID
 - up to five conditions combined with `ANY` or `ALL`
+- the wallet that creates a document always retains decrypt access
 
 Supported networks:
 
@@ -24,7 +25,7 @@ Supported networks:
 2. Each `[[marked passage]]` is encrypted locally with a unique nonce.
 3. A random salt is combined with the plaintext to produce the visible SHA-256 integrity hash.
 4. The service wraps the document key with `ECRYPT_MASTER_KEY`, binding it to the author and normalized access policy.
-5. On unlock, the service verifies the wallet signature and live onchain condition before unwrapping the document key.
+5. On unlock, the service verifies the wallet signature. The creator wallet is always eligible; other wallets must satisfy the live onchain policy before the document key is unwrapped.
 6. The browser decrypts the passages and verifies each salted hash locally.
 
 The document itself is not stored in a database. The share URL or downloaded `.ecrypt.json` package carries the public text, ciphertext, protected key, and policy.
