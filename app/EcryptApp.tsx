@@ -22,18 +22,25 @@ import {
   Wallet,
 } from "lucide-react";
 import { type ChangeEvent, type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { getAddress, recoverMessageAddress } from "viem";
 import {
   AccessPolicy,
   AccessRule,
+  canonicalDocumentCore,
+  canonicalPolicy,
+  ChallengeBinding,
   DocumentSegment,
+  EcryptDocumentCore,
   EcryptPackage,
   EncryptedSegment,
+  isEcryptPackage,
   MatchMode,
   NETWORKS,
   NetworkKey,
   normalizePolicy,
   RuleKind,
   shortAddress,
+  WrappedDocumentKey,
 } from "../lib/ecrypt";
 
 interface EthereumProvider {
@@ -109,6 +116,41 @@ function concatBytes(...values: Uint8Array[]): Uint8Array {
     offset += value.length;
   }
   return result;
+}
+
+async function sha256Hex(value: Uint8Array | string): Promise<string> {
+  const bytes = typeof value === "string" ? encoder.encode(value) : value;
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", asArrayBuffer(bytes)));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function documentCore(documentPackage: EcryptPackage): EcryptDocumentCore {
+  return {
+    version: 2,
+    id: documentPackage.id,
+    title: documentPackage.title,
+    author: documentPackage.author,
+    createdAt: documentPackage.createdAt,
+    policy: documentPackage.policy,
+    keyCommitment: documentPackage.keyCommitment,
+    segments: documentPackage.segments,
+  };
+}
+
+async function documentDigest(core: EcryptDocumentCore): Promise<string> {
+  return sha256Hex(canonicalDocumentCore(core));
+}
+
+async function policyDigest(policy: AccessPolicy): Promise<string> {
+  return sha256Hex(canonicalPolicy(policy));
+}
+
+async function wrappedKeyDigest(documentPackage: EcryptPackage): Promise<string> {
+  return sha256Hex(JSON.stringify({
+    provider: documentPackage.wrappedKey.provider,
+    keyId: documentPackage.wrappedKey.keyId,
+    ciphertext: documentPackage.wrappedKey.ciphertext,
+  }));
 }
 
 function asArrayBuffer(value: Uint8Array): ArrayBuffer {
@@ -219,7 +261,7 @@ function encodedPackage(documentPackage: EcryptPackage): string {
 function redactedPackageText(documentPackage: EcryptPackage): string {
   return documentPackage.segments
     .map((segment) =>
-      segment.kind === "public" ? segment.text : `[sha256:${segment.hash}]`,
+      segment.kind === "public" ? segment.text : `[sha256:${segment.commitment}]`,
     )
     .join("");
 }
@@ -230,33 +272,6 @@ function unlockDataPackageText(documentPackage: EcryptPackage): string {
 
 function unlockablePackageText(documentPackage: EcryptPackage): string {
   return `${redactedPackageText(documentPackage)}\n\n${unlockDataPackageText(documentPackage)}`;
-}
-
-function isEcryptPackage(value: unknown): value is EcryptPackage {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<EcryptPackage>;
-  return (
-    item.version === 1 &&
-    typeof item.id === "string" &&
-    typeof item.title === "string" &&
-    typeof item.author === "string" &&
-    typeof item.createdAt === "string" &&
-    typeof item.wrappedKey === "string" &&
-    Array.isArray(item.segments) &&
-    item.segments.length > 0 &&
-    item.segments.length <= 200 &&
-    item.segments.every(
-      (segment) =>
-        segment &&
-        typeof segment === "object" &&
-        ((segment.kind === "public" && typeof segment.text === "string") ||
-          (segment.kind === "encrypted" &&
-            typeof segment.ciphertext === "string" &&
-            typeof segment.iv === "string" &&
-            typeof segment.salt === "string" &&
-            typeof segment.hash === "string")),
-    )
-  );
 }
 
 function decodePackage(input: string): EcryptPackage {
@@ -282,9 +297,43 @@ function decodePackage(input: string): EcryptPackage {
     serialized = decoder.decode(base64UrlToBytes(serialized));
   }
   const parsed = JSON.parse(serialized) as unknown;
-  if (!isEcryptPackage(parsed)) throw new Error("This is not a valid eCrypt document package.");
+  if (!isEcryptPackage(parsed)) {
+    if (parsed && typeof parsed === "object" && (parsed as { version?: unknown }).version === 1) {
+      throw new Error("This version-1 package is no longer supported. Create a new version-2 document.");
+    }
+    throw new Error("This is not a valid eCrypt document package.");
+  }
   parsed.policy = normalizePolicy(parsed.policy);
   return parsed;
+}
+
+async function verifyPackageAuthenticity(documentPackage: EcryptPackage): Promise<void> {
+  const calculatedDocumentDigest = await documentDigest(documentCore(documentPackage));
+  const calculatedPolicyDigest = await policyDigest(documentPackage.policy);
+  if (
+    calculatedDocumentDigest !== documentPackage.documentDigest ||
+    calculatedPolicyDigest !== documentPackage.policyDigest
+  ) {
+    throw new Error("This package’s public text, metadata, or policy was changed after signing.");
+  }
+  const signedMessage = documentPackage.creatorProof.message;
+  const requiredResources = [
+    `Request ID: ${documentPackage.id}`,
+    "- urn:ecrypt:action:seal",
+    `- urn:ecrypt:document-digest:${documentPackage.documentDigest}`,
+    `- urn:ecrypt:policy-digest:${documentPackage.policyDigest}`,
+    `- urn:ecrypt:key-commitment:${documentPackage.keyCommitment}`,
+  ];
+  if (!requiredResources.every((resource) => signedMessage.includes(resource))) {
+    throw new Error("This package is not bound to its creator’s document signature.");
+  }
+  const recovered = getAddress(await recoverMessageAddress({
+    message: signedMessage,
+    signature: documentPackage.creatorProof.signature,
+  }));
+  if (recovered !== getAddress(documentPackage.author)) {
+    throw new Error("This package’s creator signature is invalid.");
+  }
 }
 
 async function api<T>(path: string, body: unknown): Promise<T> {
@@ -323,61 +372,91 @@ async function signMessage(address: string, message: string): Promise<`0x${strin
   }
 }
 
-async function walletAuthorization(action: "seal" | "unlock", wallet: string) {
-  const challenge = await api<{ message: string }>("/api/challenge", { action });
+async function walletAuthorization(
+  action: "seal" | "unlock",
+  wallet: string,
+  binding: ChallengeBinding,
+) {
+  if (!window.ethereum) throw new Error("A wallet connection is required.");
+  const chainValue = await window.ethereum.request<string>({ method: "eth_chainId" });
+  const chainId = Number.parseInt(chainValue, 16);
+  if (!Number.isSafeInteger(chainId) || chainId < 1) {
+    throw new Error("The wallet reported an invalid network.");
+  }
+  const challenge = await api<{ message: string }>("/api/challenge", {
+    action,
+    address: wallet,
+    chainId,
+    binding,
+  });
   const signature = await signMessage(wallet, challenge.message);
   return { message: challenge.message, signature };
 }
 
 async function encryptSecret(text: string, key: CryptoKey, index: number): Promise<EncryptedSegment> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const commitmentNonce = crypto.getRandomValues(new Uint8Array(32));
   const plaintext = encoder.encode(text);
-  const digest = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", asArrayBuffer(concatBytes(salt, plaintext))),
-  );
+  const commitment = await sha256Hex(concatBytes(
+    encoder.encode("ecrypt:v2:commitment\0"),
+    commitmentNonce,
+    plaintext,
+  ));
+  const envelope = encoder.encode(JSON.stringify({
+    text,
+    commitmentNonce: bytesToBase64Url(commitmentNonce),
+  }));
   const ciphertext = new Uint8Array(
     await crypto.subtle.encrypt(
       {
         name: "AES-GCM",
         iv: asArrayBuffer(iv),
-        additionalData: asArrayBuffer(encoder.encode(`ecrypt:v1:${index}`)),
+        additionalData: asArrayBuffer(encoder.encode(`ecrypt:v2:${index}:${commitment}`)),
       },
       key,
-      asArrayBuffer(plaintext),
+      asArrayBuffer(envelope),
     ),
   );
   return {
     kind: "encrypted",
     ciphertext: bytesToBase64Url(ciphertext),
     iv: bytesToBase64Url(iv),
-    salt: bytesToBase64Url(salt),
-    hash: bytesToBase64Url(digest),
+    commitment,
   };
 }
 
 async function decryptSecret(segment: EncryptedSegment, key: CryptoKey, index: number) {
-  const plaintext = new Uint8Array(
+  const plaintextEnvelope = new Uint8Array(
     await crypto.subtle.decrypt(
       {
         name: "AES-GCM",
         iv: asArrayBuffer(base64UrlToBytes(segment.iv)),
-        additionalData: asArrayBuffer(encoder.encode(`ecrypt:v1:${index}`)),
+        additionalData: asArrayBuffer(encoder.encode(`ecrypt:v2:${index}:${segment.commitment}`)),
       },
       key,
       asArrayBuffer(base64UrlToBytes(segment.ciphertext)),
     ),
   );
-  const digest = new Uint8Array(
-    await crypto.subtle.digest(
-      "SHA-256",
-      asArrayBuffer(concatBytes(base64UrlToBytes(segment.salt), plaintext)),
-    ),
-  );
-  if (bytesToBase64Url(digest) !== segment.hash) {
+  let envelope: { text?: unknown; commitmentNonce?: unknown };
+  try {
+    envelope = JSON.parse(decoder.decode(plaintextEnvelope));
+  } catch {
+    throw new Error("A redacted passage contained invalid encrypted data.");
+  }
+  if (typeof envelope.text !== "string" || typeof envelope.commitmentNonce !== "string") {
+    throw new Error("A redacted passage contained invalid encrypted data.");
+  }
+  const nonce = base64UrlToBytes(envelope.commitmentNonce);
+  if (nonce.length !== 32) throw new Error("A redacted passage contained an invalid commitment nonce.");
+  const commitment = await sha256Hex(concatBytes(
+    encoder.encode("ecrypt:v2:commitment\0"),
+    nonce,
+    encoder.encode(envelope.text),
+  ));
+  if (commitment !== segment.commitment) {
     throw new Error("A redacted passage did not pass its integrity check.");
   }
-  return decoder.decode(plaintext);
+  return envelope.text;
 }
 
 function downloadPackage(documentPackage: EcryptPackage) {
@@ -540,7 +619,7 @@ function RedactedDocument({
     const plaintext = revealed[index];
     return plaintext
       ? { key: `${index}-revealed`, kind: "revealed", text: plaintext }
-      : { key: `${index}-redacted`, kind: "redaction", label: `sha256:${segment.hash.slice(0, 12)}` };
+      : { key: `${index}-redacted`, kind: "redaction", label: `sha256:${segment.commitment.slice(0, 12)}` };
   });
   return (
     <DocumentPreview
@@ -614,17 +693,17 @@ function AboutPanel() {
           <article>
             <span>02 / Encrypt</span>
             <h4>Seal them in the browser</h4>
-            <p>Your browser creates a random 256-bit document key and encrypts each marked passage with AES-256-GCM. A separately salted SHA-256 fingerprint replaces each hidden passage inline.</p>
+            <p>Your browser creates a random 256-bit document key. Each passage receives a secret commitment nonce that is encrypted with the text, while a nonce-protected SHA-256 commitment replaces it inline.</p>
           </article>
           <article>
             <span>03 / Carry</span>
             <h4>Keep the complete package</h4>
-            <p>The portable unlock data contains the public text, ciphertext, salts, fingerprints, creator address, access policy, and protected document key. It can be copied, linked, or downloaded.</p>
+            <p>The portable version-2 data carries the signed public text and metadata, ciphertext, commitments, creator proof, access policy, and a versioned protected key. It can be copied, linked, or downloaded.</p>
           </article>
           <article>
             <span>04 / Reveal</span>
             <h4>Prove access, then decrypt</h4>
-            <p>The reader signs a short-lived message. eCrypt verifies the creator or checks the live policy, returns the document key when eligible, and the browser decrypts and verifies every passage.</p>
+            <p>The reader signs a five-minute authorization bound to this exact package. Its nonce is accepted once; eCrypt checks access, returns the key when eligible, and the browser verifies every passage.</p>
           </article>
         </div>
       </section>
@@ -635,8 +714,9 @@ function AboutPanel() {
           <h3 id="about-crypto-title">What each technology does</h3>
           <dl className="about-definition-list">
             <div><dt>AES-256-GCM</dt><dd>Encrypts each private passage and detects ciphertext tampering. This is what provides confidentiality.</dd></div>
-            <div><dt>Salted SHA-256</dt><dd>Creates the public inline fingerprint used to verify revealed text. A hash is one-way evidence, not encryption.</dd></div>
-            <div><dt>Wallet signature</dt><dd>Proves control of an address using an expiring authorization message. It does not approve a payment or transaction.</dd></div>
+            <div><dt>Nonce-protected SHA-256</dt><dd>Creates the public inline commitment. Its random verification nonce stays inside the ciphertext, preventing package holders from testing predictable guesses offline.</dd></div>
+            <div><dt>Wallet signatures</dt><dd>The creator signs the complete document digest. Reveal signatures expire, name the exact document and protected key, and cannot be replayed after use.</dd></div>
+            <div><dt>Authenticated key wrapping</dt><dd>Binds the protected document key to the signed document, policy, creator, and key commitment under an identified wrapping-key version.</dd></div>
             <div><dt>Live chain reads</dt><dd>Check the wallet’s current token or NFT eligibility on Ethereum, Base, or Robinhood when the reader asks to reveal.</dd></div>
           </dl>
         </section>
@@ -673,10 +753,11 @@ function AboutPanel() {
           <span className="eyebrow">Data boundaries</span>
           <h3 id="about-data-title">What reaches the eCrypt service</h3>
           <ul className="about-bullet-list">
-            <li><strong>Plaintext does not.</strong> The full document and revealed passages stay in the browser.</li>
+            <li><strong>Redacted plaintext does not.</strong> Protected passages and their commitment nonces are encrypted and decrypted in the browser.</li>
             <li><strong>A random document key does.</strong> eCrypt receives it over HTTPS to bind it to the creator and policy, then returns it only after an authorized reveal.</li>
             <li><strong>Policy checks disclose context.</strong> Wallet, contract, network, and balance queries are sent to eCrypt’s blockchain data provider when eligibility is checked.</li>
-            <li><strong>The package is visible to its holder.</strong> It exposes public text, ciphertext, hashes, salts, metadata, creator, and policy—but not decrypted passages.</li>
+            <li><strong>The package is visible to its holder.</strong> It exposes signed public text, ciphertext, commitments, metadata, creator, and policy—but not redacted text or commitment nonces.</li>
+            <li><strong>Replay markers are temporary security data.</strong> eCrypt records random one-time challenge identifiers without document or wallet contents so the same authorization cannot be reused.</li>
           </ul>
         </section>
 
@@ -687,7 +768,7 @@ function AboutPanel() {
           <div className="about-network-row" aria-label="Supported networks">
             <span>Ethereum</span><span>Base</span><span>Robinhood</span>
           </div>
-          <p className="about-small-copy">eCrypt is service-assisted rather than fully decentralized: the protected document key depends on eCrypt’s server-side wrapping key and availability.</p>
+          <p className="about-small-copy">eCrypt is service-assisted rather than fully decentralized: protected keys use versioned server-side wrapping and still depend on eCrypt’s authorization service being available.</p>
         </section>
       </div>
 
@@ -699,7 +780,8 @@ function AboutPanel() {
           <ul>
             <li>Anyone with the complete package can attempt the unlock process, but only the creator or a currently eligible wallet should receive the key.</li>
             <li>There is no account history or recovery vault. Lose every complete copy and the message is unrecoverable—even for eCrypt.</li>
-            <li>A holder of the complete package can use its salt and hash to test guesses about short, predictable secrets. Avoid treating an inline hash alone as secrecy; the encrypted ciphertext is the protection.</li>
+            <li>The secret commitment nonce is encrypted with each passage, so a package holder cannot test predictable plaintext guesses against the visible SHA-256 commitment.</li>
+            <li>Changing the title, public wording, metadata, policy, ciphertext, or commitments invalidates the signed document and eCrypt rejects it before reveal.</li>
             <li>A compromised wallet, browser, extension, clipboard, device, or recipient can expose revealed text.</li>
             <li>This is experimental software and has not been presented as independently audited or post-quantum secure.</li>
           </ul>
@@ -715,7 +797,8 @@ function AboutPanel() {
           <details><summary>Can someone decrypt just because they have the unlock data?</summary><p>No. The unlock data lets them begin the process. They still need the creator wallet or a wallet that currently satisfies the package’s policy.</p></details>
           <details><summary>Does eCrypt save my document or a history?</summary><p>No document vault or wallet history is currently stored. Keep Copy all, the unlock-data block, a share link, or the downloaded JSON package somewhere you control.</p></details>
           <details><summary>Does a reader need to pay gas?</summary><p>No. The wallet signs a message and eCrypt makes read-only ownership checks. There is no blockchain transaction in the standard create or reveal flow.</p></details>
-          <details><summary>Is the visible SHA-256 value the encrypted text?</summary><p>No. It is a salted integrity fingerprint. The actual protected text is AES-encrypted ciphertext inside the complete unlock package.</p></details>
+          <details><summary>Is the visible SHA-256 value the encrypted text?</summary><p>No. It is a nonce-protected commitment. The protected text and the random nonce required to test that commitment are both inside authenticated AES ciphertext.</p></details>
+          <details><summary>Can someone change the readable public wording?</summary><p>They can edit a copied string, but eCrypt recomputes the complete document digest and verifies the creator’s wallet signature. An altered package is rejected before reveal.</p></details>
           <details><summary>Is eCrypt quantum-safe?</summary><p>No post-quantum claim is made. AES-256 has a substantial security margin, but ordinary EVM wallet signatures are not post-quantum cryptography.</p></details>
         </div>
       </section>
@@ -765,16 +848,17 @@ export default function EcryptApp() {
       ? window.location.hash.slice("#ecrypt=".length)
       : "";
     if (!encoded) return;
-    const timer = window.setTimeout(() => {
+    const timer = window.setTimeout(() => void (async () => {
       try {
         const loaded = decodePackage(encoded);
+        await verifyPackageAuthenticity(loaded);
         setOpenedPackage(loaded);
         setMode("open");
-        setNotice({ tone: "info", text: "Encrypted package loaded. Connect an eligible wallet to reveal the redactions." });
-      } catch {
-        setNotice({ tone: "error", text: "The encrypted document link is incomplete or invalid." });
+        setNotice({ tone: "info", text: "Signed package verified. Connect an eligible wallet to reveal the redactions." });
+      } catch (error) {
+        setNotice({ tone: "error", text: error instanceof Error ? error.message : "The encrypted document link is incomplete or invalid." });
       }
-    }, 0);
+    })(), 0);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -965,8 +1049,7 @@ export default function EcryptApp() {
 
     setBusy("seal");
     try {
-      const address = await ensureWallet();
-      const authorization = await walletAuthorization("seal", address);
+      const address = getAddress(await ensureWallet());
       const rawKey = crypto.getRandomValues(new Uint8Array(32));
       const key = await crypto.subtle.importKey(
         "raw",
@@ -984,21 +1067,52 @@ export default function EcryptApp() {
             : { kind: "public", text: segment.text },
         );
       }
-      const wrapped = await api<{ wrappedKey: string; policy: AccessPolicy; author: string }>("/api/wrap", {
-        key: bytesToBase64Url(rawKey),
+      const core: EcryptDocumentCore = {
+        version: 2,
+        id: randomId("doc"),
+        title: title.trim().slice(0, 160),
+        author: address,
+        createdAt: new Date().toISOString(),
         policy,
+        keyCommitment: await sha256Hex(rawKey),
+        segments,
+      };
+      const calculatedDocumentDigest = await documentDigest(core);
+      const calculatedPolicyDigest = await policyDigest(policy);
+      const binding: ChallengeBinding = {
+        action: "seal",
+        documentId: core.id,
+        documentDigest: calculatedDocumentDigest,
+        policyDigest: calculatedPolicyDigest,
+        keyCommitment: core.keyCommitment,
+      };
+      const authorization = await walletAuthorization("seal", address, binding);
+      const wrapped = await api<{
+        wrappedKey: WrappedDocumentKey;
+        policy: AccessPolicy;
+        author: string;
+        documentDigest: string;
+        policyDigest: string;
+      }>("/api/wrap", {
+        key: bytesToBase64Url(rawKey),
+        documentId: core.id,
+        documentDigest: calculatedDocumentDigest,
+        policyDigest: calculatedPolicyDigest,
+        keyCommitment: core.keyCommitment,
+        author: core.author,
+        policy: core.policy,
         ...authorization,
       });
       const documentPackage: EcryptPackage = {
-        version: 1,
-        id: randomId("doc"),
-        title: title.trim().slice(0, 160),
+        ...core,
         author: wrapped.author,
-        createdAt: new Date().toISOString(),
         policy: wrapped.policy,
+        documentDigest: wrapped.documentDigest,
+        policyDigest: wrapped.policyDigest,
         wrappedKey: wrapped.wrappedKey,
-        segments,
+        creatorProof: authorization,
       };
+      await verifyPackageAuthenticity(documentPackage);
       setSealedPackage(documentPackage);
       setRevealed({});
       setNotice({ tone: "success", text: "Redacted text is ready. Use Copy all for a self-contained message, or choose one of the separate formats below." });
@@ -1049,28 +1163,29 @@ export default function EcryptApp() {
     }
   }
 
-  function openPackageText(value: string) {
+  async function openPackageText(value: string) {
     const loaded = decodePackage(value);
+    await verifyPackageAuthenticity(loaded);
     setOpenedPackage(loaded);
     setRevealed({});
-    setNotice({ tone: "success", text: "Unlock data found. Connect an eligible wallet to reveal the redactions." });
+    setNotice({ tone: "success", text: "Creator signature verified. Connect an eligible wallet to reveal the redactions." });
   }
 
-  function loadPackage() {
+  async function loadPackage() {
     try {
-      openPackageText(packageInput);
+      await openPackageText(packageInput);
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The pasted text could not be opened." });
     }
   }
 
-  function handlePackagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+  async function handlePackagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const pasted = event.clipboardData.getData("text/plain");
     if (!pasted) return;
     event.preventDefault();
     setPackageInput(pasted);
     try {
-      openPackageText(pasted);
+      await openPackageText(pasted);
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The pasted text could not be opened." });
     }
@@ -1086,7 +1201,7 @@ export default function EcryptApp() {
       }
       const contents = await file.text();
       setPackageInput(contents);
-      openPackageText(contents);
+      await openPackageText(contents);
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The selected package could not be opened." });
     } finally {
@@ -1100,16 +1215,33 @@ export default function EcryptApp() {
     setNotice(null);
     try {
       const address = await ensureWallet();
-      const authorization = await walletAuthorization("unlock", address);
+      const binding: ChallengeBinding = {
+        action: "unlock",
+        documentId: openedPackage.id,
+        documentDigest: openedPackage.documentDigest,
+        policyDigest: openedPackage.policyDigest,
+        keyCommitment: openedPackage.keyCommitment,
+        wrappedKeyDigest: await wrappedKeyDigest(openedPackage),
+      };
+      const authorization = await walletAuthorization("unlock", address, binding);
       const response = await api<{ key: string; access: "creator" | "policy" }>("/api/unwrap", {
-        wrappedKey: openedPackage.wrappedKey,
-        policy: openedPackage.policy,
+        documentId: openedPackage.id,
+        keyCommitment: openedPackage.keyCommitment,
         author: openedPackage.author,
+        policy: openedPackage.policy,
+        wrappedKey: openedPackage.wrappedKey,
+        documentDigest: openedPackage.documentDigest,
+        policyDigest: openedPackage.policyDigest,
+        creatorProof: openedPackage.creatorProof,
         ...authorization,
       });
+      const rawKey = base64UrlToBytes(response.key);
+      if (await sha256Hex(rawKey) !== openedPackage.keyCommitment) {
+        throw new Error("The revealed document key does not match the signed package.");
+      }
       const key = await crypto.subtle.importKey(
         "raw",
-        asArrayBuffer(base64UrlToBytes(response.key)),
+        asArrayBuffer(rawKey),
         "AES-GCM",
         false,
         ["decrypt"],
@@ -1351,7 +1483,7 @@ export default function EcryptApp() {
                   <div className="result-copy">
                     <span className="eyebrow">Redacted text / ready to paste</span>
                     <h2>Original text, inline hashes.</h2>
-                    <p>Every public character stays in place. Each protected passage is replaced with its full salted SHA-256 hash.</p>
+                    <p>Every public character stays in place and is covered by the creator signature. Each protected passage becomes a nonce-protected SHA-256 commitment.</p>
                     <label className="field-label" htmlFor="redacted-output">Complete output — select all and copy</label>
                     <textarea id="redacted-output" className="redacted-output" readOnly value={unlockableText} spellCheck={false} />
                     <div className="output-actions">
@@ -1429,7 +1561,7 @@ export default function EcryptApp() {
                     <div className="unlock-seal"><ShieldCheck size={27} /></div>
                     <span className="eyebrow">Live access check</span>
                     <h2>{Object.keys(revealed).length ? "Redactions revealed" : "Prove access to unlock"}</h2>
-                    <p>{Object.keys(revealed).length ? "The plaintext was decrypted locally and every salted hash matched." : "Your wallet signs a message. No transaction or gas fee is required."}</p>
+                    <p>{Object.keys(revealed).length ? "The plaintext was decrypted locally and every hidden-nonce commitment matched." : "Your wallet signs a one-time message bound to this exact package. No transaction or gas fee is required."}</p>
                     <div className="policy-summary">
                       <div><span>Policy</span><strong>{openedPackage.policy.mode === "any" ? "Any condition" : "All conditions"}</strong></div>
                       <div className="summary-rule">
@@ -1468,7 +1600,7 @@ export default function EcryptApp() {
 
         <section className="principles">
           <div><span>01</span><h3>Local by default</h3><p>Plaintext and decrypted passages stay in the browser.</p></div>
-          <div><span>02</span><h3>Portable proof</h3><p>Each redaction carries a salted SHA-256 integrity hash.</p></div>
+          <div><span>02</span><h3>Portable proof</h3><p>Signed public text and nonce-protected commitments expose tampering.</p></div>
           <div><span>03</span><h3>Live eligibility</h3><p>Wallet and token conditions are checked at reveal time.</p></div>
         </section>
       </main>

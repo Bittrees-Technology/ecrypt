@@ -6,6 +6,7 @@ import {
   issueChallenge,
   requestHost,
 } from "../../../lib/server-security";
+import { ChallengeBinding, isDigest, isDocumentId } from "../../../lib/ecrypt";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +14,41 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     assertRateLimit(request, "challenge", 40);
-    const body = (await request.json()) as { action?: ChallengeAction };
+    const body = (await request.json()) as {
+      action?: ChallengeAction;
+      address?: string;
+      chainId?: number;
+      binding?: Partial<ChallengeBinding>;
+    };
     if (body.action !== "seal" && body.action !== "unlock") {
       return NextResponse.json({ error: "Choose a valid wallet action." }, { status: 400 });
     }
-    return NextResponse.json(issueChallenge(body.action, requestHost(request)), {
+    const binding = body.binding;
+    if (
+      !binding ||
+      binding.action !== body.action ||
+      !isDocumentId(binding.documentId) ||
+      !isDigest(binding.documentDigest) ||
+      !isDigest(binding.policyDigest) ||
+      !isDigest(binding.keyCommitment) ||
+      (body.action === "unlock" && !isDigest(binding.wrappedKeyDigest)) ||
+      (body.action === "seal" && binding.wrappedKeyDigest !== undefined)
+    ) {
+      return NextResponse.json(
+        { error: "The wallet action is not bound to a valid eCrypt document." },
+        { status: 400 },
+      );
+    }
+    if (!body.address || !Number.isSafeInteger(body.chainId)) {
+      return NextResponse.json({ error: "Connect a supported wallet network first." }, { status: 400 });
+    }
+    return NextResponse.json(issueChallenge(
+      body.action,
+      requestHost(request),
+      body.address,
+      body.chainId!,
+      binding as ChallengeBinding,
+    ), {
       headers: { "cache-control": "no-store" },
     });
   } catch (error) {
@@ -25,4 +56,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-

@@ -30,8 +30,10 @@ Do not include real decrypted documents, active unlock packages, wallet recovery
 ## In scope
 
 - client-side encryption, decryption, integrity verification, and package parsing;
-- wallet-signature challenges and creator authorization;
-- document-key wrapping and unwrapping;
+- whole-document creator signatures, canonical digests, and package-tampering detection;
+- document-bound wallet challenges, one-time nonce consumption, and creator authorization;
+- nonce-protected inline commitments and offline-guess resistance;
+- versioned document-key wrapping, KMS encryption contexts, rotation, and unwrapping;
 - wallet, ERC-20, ERC-721, and ERC-1155 eligibility checks;
 - authorization bypasses, cross-origin request flaws, and policy tampering;
 - secret exposure caused by the eCrypt application or its deployment configuration;
@@ -54,4 +56,10 @@ This policy does not authorize access to another person’s data, disruption of 
 
 ## Important security boundary
 
-eCrypt is experimental software and has not undergone an independent security audit. Plaintext redactions are encrypted and decrypted in the browser, but the deployed service holds the server-side master key used to protect document keys. A compromise or rotation of `ECRYPT_MASTER_KEY` can affect the confidentiality or recoverability of encrypted packages. Review the [README](README.md#security-and-operational-boundary) before operating a deployment with sensitive data.
+eCrypt is experimental software and has not undergone an independent security audit. Version 2 encrypts protected plaintext and its commitment nonce in the browser, authenticates the complete readable document through the creator’s wallet signature, and rejects altered packages. Production wallet challenges are tied to one document and protected-key digest, expire after five minutes, and use an opaque create-once replay marker so their nonce cannot be accepted twice.
+
+The service remains part of the trust boundary: it receives each random document key for wrapping and returns it after creator or live-policy authorization. The deployed local provider uses a versioned `ECRYPT_MASTER_KEY`; the optional AWS KMS provider uses an HSM-backed key and authenticated encryption context through Vercel OIDC. Compromise of the hosting account, active wrapping provider, authorization service, wallet, browser, extension, device, or recipient can affect confidentiality or availability.
+
+Never delete a wrapping-key version while packages using its `keyId` may still need to open. Never place plaintext, raw wallet addresses, or raw policies in an AWS KMS encryption context or replay-marker pathname; KMS contexts are audit-logged. eCrypt uses only document, policy, author, and key commitments in that context. Review the [README](README.md#security-and-operational-boundary) before operating a deployment with sensitive data.
+
+Version-1 packages are intentionally unsupported. This avoids preserving the former public-text authentication and offline-guessing weaknesses in a compatibility path.

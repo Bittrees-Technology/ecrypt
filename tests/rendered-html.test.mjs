@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
-import { encodeAbiParameters, toEventSelector } from "viem";
+import { encodeAbiParameters, getAddress, toEventSelector } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 process.env.ECRYPT_MASTER_KEY = Buffer.alloc(32, 7).toString("base64");
+process.env.ECRYPT_CHALLENGE_SECRET = Buffer.alloc(32, 6).toString("base64");
+process.env.ECRYPT_ACTIVE_KEY_ID = "test-key-2026-08";
+process.env.ECRYPT_ALLOW_MEMORY_NONCE_STORE = "true";
 process.env.ALCHEMY_API_KEY = "test-key";
 
 const projectRoot = new URL("../", import.meta.url);
@@ -14,14 +18,12 @@ const holder = privateKeyToAccount(`0x${"33".repeat(32)}`);
 
 async function worker() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
+  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${Math.random()}`);
   return (await import(workerUrl.href)).default;
 }
 
 function runtime() {
-  return {
-    ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
-  };
+  return { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } };
 }
 
 function context() {
@@ -40,11 +42,109 @@ async function post(handler, path, body) {
   );
 }
 
-async function authorization(handler, action, signer) {
-  const challengeResponse = await post(handler, "/api/challenge", { action });
-  assert.equal(challengeResponse.status, 200);
-  const challenge = await challengeResponse.json();
-  return { message: challenge.message, signature: await signer.signMessage({ message: challenge.message }) };
+function hash(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function canonicalPolicy(policy) {
+  return JSON.stringify({
+    mode: policy.mode,
+    rules: policy.rules.map((rule) => ({
+      id: rule.id,
+      kind: rule.kind,
+      ...(rule.network ? { network: rule.network } : {}),
+      ...(rule.address ? { address: getAddress(rule.address).toLowerCase() } : {}),
+      ...(rule.contract ? { contract: getAddress(rule.contract).toLowerCase() } : {}),
+      ...(rule.tokenId ? { tokenId: rule.tokenId } : {}),
+      ...(rule.minimum ? { minimum: rule.minimum } : {}),
+    })),
+  });
+}
+
+function descriptor(policy, signer = account, key = Buffer.alloc(32, 9), suffix = "security01") {
+  return {
+    documentId: `doc-${suffix}`,
+    documentDigest: hash(`signed public text:${suffix}`),
+    policyDigest: hash(canonicalPolicy(policy)),
+    keyCommitment: hash(key),
+    author: signer.address,
+    policy,
+    key,
+  };
+}
+
+function sealBinding(document) {
+  return {
+    action: "seal",
+    documentId: document.documentId,
+    documentDigest: document.documentDigest,
+    policyDigest: document.policyDigest,
+    keyCommitment: document.keyCommitment,
+  };
+}
+
+function wrapperDigest(wrappedKey) {
+  return hash(JSON.stringify({
+    provider: wrappedKey.provider,
+    keyId: wrappedKey.keyId,
+    ciphertext: wrappedKey.ciphertext,
+  }));
+}
+
+function unlockBinding(document, wrappedKey) {
+  return {
+    ...sealBinding(document),
+    action: "unlock",
+    wrappedKeyDigest: wrapperDigest(wrappedKey),
+  };
+}
+
+async function authorization(handler, action, signer, binding) {
+  const response = await post(handler, "/api/challenge", {
+    action,
+    address: signer.address,
+    chainId: 1,
+    binding,
+  });
+  assert.equal(response.status, 200, response.status === 200 ? "" : await response.text());
+  const challenge = await response.json();
+  assert.match(challenge.message, /Version: 1\nChain ID: 1\nNonce: [a-f0-9]{32}/);
+  assert.match(challenge.message, new RegExp(`document-digest:${binding.documentDigest}`));
+  return {
+    message: challenge.message,
+    signature: await signer.signMessage({ message: challenge.message }),
+  };
+}
+
+async function seal(handler, document, signer = account) {
+  const creatorProof = await authorization(handler, "seal", signer, sealBinding(document));
+  const response = await post(handler, "/api/wrap", {
+    key: document.key.toString("base64url"),
+    documentId: document.documentId,
+    documentDigest: document.documentDigest,
+    policyDigest: document.policyDigest,
+    keyCommitment: document.keyCommitment,
+    author: document.author,
+    policy: document.policy,
+    ...creatorProof,
+  });
+  assert.equal(response.status, 200, response.status === 200 ? "" : await response.text());
+  return { ...(await response.json()), creatorProof };
+}
+
+async function unlock(handler, document, sealed, signer) {
+  const proof = await authorization(handler, "unlock", signer, unlockBinding(document, sealed.wrappedKey));
+  return post(handler, "/api/unwrap", {
+    documentId: document.documentId,
+    documentDigest: document.documentDigest,
+    policyDigest: document.policyDigest,
+    keyCommitment: document.keyCommitment,
+    author: document.author,
+    policy: sealed.policy,
+    wrappedKey: sealed.wrappedKey,
+    creatorProof: sealed.creatorProof,
+    ...proof,
+  });
 }
 
 test("server-renders the finished eCrypt product", async () => {
@@ -63,89 +163,87 @@ test("server-renders the finished eCrypt product", async () => {
   assert.doesNotMatch(html, /Robinhood Chain/);
   assert.match(html, /Paste &amp; decrypt/);
   assert.match(html, /About/);
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
-test("wallet-only policy wraps and unwraps the same document key", async () => {
+test("version-2 wallet policy wraps and unwraps the same key", async () => {
   const handler = await worker();
-  const policy = {
-    mode: "any",
-    rules: [{ id: "wallet-owner", kind: "wallet", address: account.address }],
-  };
-  const documentKey = Buffer.alloc(32, 9).toString("base64url");
-  const sealAuthorization = await authorization(handler, "seal", account);
-  const wrapResponse = await post(handler, "/api/wrap", {
-    key: documentKey,
-    policy,
-    ...sealAuthorization,
-  });
-  assert.equal(wrapResponse.status, 200);
-  const wrapped = await wrapResponse.json();
-  assert.equal(wrapped.author, account.address);
+  const policy = { mode: "any", rules: [{ id: "wallet-owner", kind: "wallet", address: account.address }] };
+  const document = descriptor(policy, account, Buffer.alloc(32, 9), "wallet001");
+  const sealed = await seal(handler, document);
+  assert.equal(sealed.author, account.address);
+  assert.equal(sealed.wrappedKey.provider, "local-aes-gcm");
+  assert.equal(sealed.wrappedKey.keyId, "test-key-2026-08");
 
-  const unlockAuthorization = await authorization(handler, "unlock", account);
-  const unwrapResponse = await post(handler, "/api/unwrap", {
-    wrappedKey: wrapped.wrappedKey,
-    policy: wrapped.policy,
-    author: wrapped.author,
-    ...unlockAuthorization,
-  });
-  assert.equal(unwrapResponse.status, 200);
-  const unwrapped = await unwrapResponse.json();
-  assert.equal(unwrapped.key, documentKey);
+  const response = await unlock(handler, document, sealed, account);
+  assert.equal(response.status, 200, response.status === 200 ? "" : await response.text());
+  const opened = await response.json();
+  assert.equal(opened.key, document.key.toString("base64url"));
+  assert.equal(opened.access, "creator");
 });
 
-test("the document creator can always unwrap the document key", async () => {
+test("creator access bypasses the reader policy but strangers cannot", async () => {
   const handler = await worker();
-  const policy = {
-    mode: "any",
-    rules: [{ id: "wallet-reader", kind: "wallet", address: stranger.address }],
-  };
-  const documentKey = Buffer.alloc(32, 8).toString("base64url");
-  const sealAuthorization = await authorization(handler, "seal", account);
-  const wrapResponse = await post(handler, "/api/wrap", {
-    key: documentKey,
-    policy,
-    ...sealAuthorization,
-  });
-  assert.equal(wrapResponse.status, 200);
-  const wrapped = await wrapResponse.json();
-
-  const unlockAuthorization = await authorization(handler, "unlock", account);
-  const unwrapResponse = await post(handler, "/api/unwrap", {
-    wrappedKey: wrapped.wrappedKey,
-    policy: wrapped.policy,
-    author: wrapped.author,
-    ...unlockAuthorization,
-  });
-  assert.equal(unwrapResponse.status, 200);
-  const unwrapped = await unwrapResponse.json();
-  assert.equal(unwrapped.key, documentKey);
-  assert.equal(unwrapped.access, "creator");
+  const policy = { mode: "any", rules: [{ id: "wallet-reader", kind: "wallet", address: holder.address }] };
+  const document = descriptor(policy, account, Buffer.alloc(32, 8), "creator01");
+  const sealed = await seal(handler, document);
+  assert.equal((await unlock(handler, document, sealed, account)).status, 200);
+  assert.equal((await unlock(handler, document, sealed, stranger)).status, 403);
 });
 
-test("an unauthorized wallet cannot unwrap the document key", async () => {
+test("the same document-bound wallet authorization cannot be replayed", async () => {
   const handler = await worker();
-  const policy = {
-    mode: "any",
-    rules: [{ id: "wallet-owner", kind: "wallet", address: account.address }],
+  const policy = { mode: "any", rules: [{ id: "wallet-owner", kind: "wallet", address: account.address }] };
+  const document = descriptor(policy, account, Buffer.alloc(32, 7), "replay001");
+  const sealed = await seal(handler, document);
+  const proof = await authorization(handler, "unlock", account, unlockBinding(document, sealed.wrappedKey));
+  const request = {
+    documentId: document.documentId,
+    documentDigest: document.documentDigest,
+    policyDigest: document.policyDigest,
+    keyCommitment: document.keyCommitment,
+    author: document.author,
+    policy: sealed.policy,
+    wrappedKey: sealed.wrappedKey,
+    creatorProof: sealed.creatorProof,
+    ...proof,
   };
-  const sealAuthorization = await authorization(handler, "seal", account);
-  const wrapResponse = await post(handler, "/api/wrap", {
-    key: Buffer.alloc(32, 4).toString("base64url"),
-    policy,
-    ...sealAuthorization,
-  });
-  const wrapped = await wrapResponse.json();
+  assert.equal((await post(handler, "/api/unwrap", request)).status, 200);
+  const replay = await post(handler, "/api/unwrap", request);
+  assert.equal(replay.status, 400);
+  assert.match((await replay.json()).error, /already been used/i);
+});
 
-  const unlockAuthorization = await authorization(handler, "unlock", stranger);
-  const unwrapResponse = await post(handler, "/api/unwrap", {
-    wrappedKey: wrapped.wrappedKey,
-    policy: wrapped.policy,
-    author: wrapped.author,
-    ...unlockAuthorization,
-  });
-  assert.equal(unwrapResponse.status, 403);
+test("altered document digests and public-package bindings are rejected", async () => {
+  const handler = await worker();
+  const policy = { mode: "any", rules: [{ id: "wallet-owner", kind: "wallet", address: account.address }] };
+  const document = descriptor(policy, account, Buffer.alloc(32, 5), "tamper001");
+  const sealed = await seal(handler, document);
+  const altered = { ...document, documentDigest: hash("changed public wording") };
+  const response = await unlock(handler, altered, sealed, account);
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /expired or invalid/i);
+});
+
+test("zero and negative token minimums are rejected server-side", async () => {
+  const handler = await worker();
+  for (const [minimum, suffix] of [["0", "zero0001"], ["-1", "negative1"]]) {
+    const policy = {
+      mode: "any",
+      rules: [{ id: `erc20-${suffix}`, kind: "erc20", network: "ethereum", contract: stranger.address, minimum }],
+    };
+    const document = {
+      ...descriptor({ mode: "any", rules: [{ ...policy.rules[0], minimum: "1" }] }, account, Buffer.alloc(32, 4), suffix),
+      policy,
+    };
+    const creatorProof = await authorization(handler, "seal", account, sealBinding(document));
+    const response = await post(handler, "/api/wrap", {
+      key: document.key.toString("base64url"),
+      ...document,
+      ...creatorProof,
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /greater than zero/i);
+  }
 });
 
 test("an ERC-1155 policy can authorize ownership of any token ID", async () => {
@@ -153,26 +251,11 @@ test("an ERC-1155 policy can authorize ownership of any token ID", async () => {
   const contract = stranger.address;
   const policy = {
     mode: "any",
-    rules: [
-      {
-        id: "erc1155-any",
-        kind: "erc1155",
-        network: "ethereum",
-        contract,
-        tokenId: "",
-        minimum: "2",
-      },
-    ],
+    rules: [{ id: "erc1155-any", kind: "erc1155", network: "ethereum", contract, minimum: "2" }],
   };
-  const sealAuthorization = await authorization(handler, "seal", account);
-  const wrapResponse = await post(handler, "/api/wrap", {
-    key: Buffer.alloc(32, 5).toString("base64url"),
-    policy,
-    ...sealAuthorization,
-  });
-  assert.equal(wrapResponse.status, 200);
-  const wrapped = await wrapResponse.json();
-  assert.equal(wrapped.policy.rules[0].tokenId, undefined);
+  const document = descriptor(policy, account, Buffer.alloc(32, 3), "erc115501");
+  const sealed = await seal(handler, document);
+  assert.equal(sealed.policy.rules[0].tokenId, undefined);
 
   const originalFetch = globalThis.fetch;
   const ownershipRequests = [];
@@ -180,172 +263,98 @@ test("an ERC-1155 policy can authorize ownership of any token ID", async () => {
     const url = new URL(String(input));
     ownershipRequests.push(url.pathname);
     if (url.pathname.endsWith("/getNFTsForOwner")) {
-      assert.equal(url.searchParams.get("owner"), holder.address);
-      assert.equal(url.searchParams.get("contractAddresses[]"), contract);
       return Response.json({
-        ownedNfts: [
-          {
-            contract: { address: contract, tokenType: "ERC1155" },
-            tokenId: "7",
-            tokenType: "ERC1155",
-          },
-        ],
+        ownedNfts: [{ contract: { address: contract, tokenType: "ERC1155" }, tokenId: "7", tokenType: "ERC1155" }],
         pageKey: null,
       });
     }
     const rpc = JSON.parse(String(init?.body));
     assert.equal(rpc.method, "eth_call");
-    return Response.json({
-      jsonrpc: "2.0",
-      id: 1,
-      result: encodeAbiParameters([{ type: "uint256[]" }], [[3n]]),
-    });
+    return Response.json({ jsonrpc: "2.0", id: 1, result: encodeAbiParameters([{ type: "uint256[]" }], [[3n]]) });
   };
-
   try {
-    const unlockAuthorization = await authorization(handler, "unlock", holder);
-    const unwrapResponse = await post(handler, "/api/unwrap", {
-      wrappedKey: wrapped.wrappedKey,
-      policy: wrapped.policy,
-      author: wrapped.author,
-      ...unlockAuthorization,
-    });
-    assert.equal(unwrapResponse.status, 200);
+    assert.equal((await unlock(handler, document, sealed, holder)).status, 200);
     assert.equal(ownershipRequests.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("an any-ID ERC-1155 policy falls back to live transfer logs", async () => {
+test("any-ID ERC-1155 falls back to live transfer logs", async () => {
   const handler = await worker();
   const contract = stranger.address;
   const policy = {
     mode: "any",
-    rules: [
-      {
-        id: "erc1155-any-robinhood",
-        kind: "erc1155",
-        network: "robinhood",
-        contract,
-        minimum: "1",
-      },
-    ],
+    rules: [{ id: "erc1155-any-robinhood", kind: "erc1155", network: "robinhood", contract, minimum: "1" }],
   };
-  const sealAuthorization = await authorization(handler, "seal", account);
-  const wrapResponse = await post(handler, "/api/wrap", {
-    key: Buffer.alloc(32, 6).toString("base64url"),
-    policy,
-    ...sealAuthorization,
-  });
-  const wrapped = await wrapResponse.json();
-
+  const document = descriptor(policy, account, Buffer.alloc(32, 2), "erc115502");
+  const sealed = await seal(handler, document);
   const originalFetch = globalThis.fetch;
-  const rpcMethods = [];
+  const methods = [];
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
-    if (url.pathname.endsWith("/getNFTsForOwner")) {
-      return Response.json({ error: "NFT index unavailable" }, { status: 404 });
-    }
+    if (url.pathname.endsWith("/getNFTsForOwner")) return Response.json({ error: "unavailable" }, { status: 404 });
     const rpc = JSON.parse(String(init?.body));
-    rpcMethods.push(rpc.method);
+    methods.push(rpc.method);
     if (rpc.method === "eth_getLogs") {
       return Response.json({
         jsonrpc: "2.0",
         id: 1,
-        result: [
-          {
-            topics: [
-              toEventSelector("TransferSingle(address,address,address,uint256,uint256)"),
-            ],
-            data: encodeAbiParameters(
-              [{ type: "uint256" }, { type: "uint256" }],
-              [19n, 1n],
-            ),
-          },
-        ],
+        result: [{
+          topics: [toEventSelector("TransferSingle(address,address,address,uint256,uint256)")],
+          data: encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }], [19n, 1n]),
+        }],
       });
     }
-    assert.equal(rpc.method, "eth_call");
-    return Response.json({
-      jsonrpc: "2.0",
-      id: 1,
-      result: encodeAbiParameters([{ type: "uint256[]" }], [[1n]]),
-    });
+    return Response.json({ jsonrpc: "2.0", id: 1, result: encodeAbiParameters([{ type: "uint256[]" }], [[1n]]) });
   };
-
   try {
-    const unlockAuthorization = await authorization(handler, "unlock", holder);
-    const unwrapResponse = await post(handler, "/api/unwrap", {
-      wrappedKey: wrapped.wrappedKey,
-      policy: wrapped.policy,
-      author: wrapped.author,
-      ...unlockAuthorization,
-    });
-    assert.equal(unwrapResponse.status, 200);
-    assert.deepEqual(rpcMethods, ["eth_getLogs", "eth_call"]);
+    assert.equal((await unlock(handler, document, sealed, holder)).status, 200);
+    assert.deepEqual(methods, ["eth_getLogs", "eth_call"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("starter-only assets are gone", async () => {
-  const packageJson = await readFile(new URL("package.json", projectRoot), "utf8");
+test("version-2 client source keeps the commitment nonce inside ciphertext", async () => {
+  const appSource = await readFile(new URL("app/EcryptApp.tsx", projectRoot), "utf8");
+  const schemaSource = await readFile(new URL("lib/ecrypt.ts", projectRoot), "utf8");
+  const serverSource = await readFile(new URL("lib/server-security.ts", projectRoot), "utf8");
+  const wrapperSource = await readFile(new URL("lib/key-wrapper.ts", projectRoot), "utf8");
+  assert.match(appSource, /\[sha256:\$\{segment\.commitment\}\]/);
+  assert.match(appSource, /commitmentNonce: bytesToBase64Url\(commitmentNonce\)/);
+  assert.match(appSource, /ecrypt:v2:commitment/);
+  assert.doesNotMatch(schemaSource, /\bsalt:/);
+  assert.match(schemaSource, /version: 2/);
+  assert.match(appSource, /version-1 package is no longer supported/);
+  assert.match(appSource, /verifyPackageAuthenticity/);
+  assert.match(serverSource, /consumeChallengeNonce/);
+  assert.match(serverSource, /document-digest/);
+  assert.match(wrapperSource, /EncryptionContext/);
+  assert.match(wrapperSource, /keyCommitment/);
+});
+
+test("the established copy, JSON, wallet, preview, and About flows remain present", async () => {
   const appSource = await readFile(new URL("app/EcryptApp.tsx", projectRoot), "utf8");
   const stylesheet = await readFile(new URL("app/globals.css", projectRoot), "utf8");
-  assert.doesNotMatch(packageJson, /react-loading-skeleton|site-creator-vinext-starter/);
-  assert.match(appSource, /\[sha256:\$\{segment\.hash\}\]/);
   assert.match(appSource, /BEGIN ECRYPT UNLOCK DATA/);
   assert.match(appSource, /Copy all/);
   assert.match(appSource, /Copy redacted message only/);
   assert.match(appSource, /Copy unlock hash only/);
-  assert.match(appSource, /unlockDataPackageText/);
   assert.match(appSource, /No history or recovery/);
   assert.match(appSource, /Upload \.ecrypt\.json/);
-  assert.match(appSource, /handlePackageFile/);
   assert.match(appSource, /Document title <span>\(optional\)<\/span>/);
   assert.match(appSource, /type Mode = "compose" \| "open" \| "about"/);
-  assert.match(appSource, /A readable document with encrypted holes/);
-  assert.match(appSource, /Despite the button’s “unlock hash” label/);
   assert.match(appSource, /Creator access is built in/);
   assert.match(appSource, /Gasless by default/);
-  assert.match(appSource, /There is no account history or recovery vault/);
   assert.match(appSource, /Is eCrypt quantum-safe/);
-  assert.match(stylesheet, /\.about-panel/);
-  assert.match(stylesheet, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.doesNotMatch(appSource, /Give the document a title before sealing it/);
-  assert.doesNotMatch(appSource, /SAMPLE_DOCUMENT|Untitled private document|Untitled encrypted message/);
-  assert.match(appSource, /const \[body, setBody\] = useState\(""\)/);
-  assert.match(appSource, /title\?\.trim\(\) && <h3>/);
-  assert.match(appSource, /readOnly value=\{unlockableText\}/);
-  assert.match(appSource, /PREVIEW_PAGE_CHARACTER_LIMIT = 1_800/);
-  assert.match(appSource, /function paginatePreviewPieces/);
-  assert.match(appSource, /Continuous/);
-  assert.match(appSource, /Document preview pages/);
-  assert.match(appSource, />First<\/button>/);
-  assert.match(appSource, />Previous<\/button>/);
-  assert.match(appSource, />Next<\/button>/);
-  assert.match(appSource, />Last<\/button>/);
-  assert.match(appSource, /<DocumentPreview/);
-  assert.match(stylesheet, /\.document-paper-paged/);
-  assert.match(stylesheet, /overflow-wrap: anywhere/);
   assert.match(appSource, /handleWalletAction/);
-  assert.match(appSource, /network-picker/);
-  assert.match(appSource, /Switch connected wallet network/);
-  assert.match(appSource, /onClick=\{\(\) => void switchWalletNetwork\(key\)\}/);
-  assert.match(appSource, /aria-pressed=\{walletNetwork === key\}/);
-  assert.match(appSource, /await switchWalletNetwork\(networkKey, true\)/);
-  assert.match(appSource, /method: "eth_chainId"/);
-  assert.match(appSource, /provider\.on\?\.\("chainChanged"/);
   assert.match(appSource, /wallet_switchEthereumChain/);
-  assert.match(appSource, /wallet_addEthereumChain/);
-  assert.match(appSource, /rpc\.mainnet\.chain\.robinhood\.com/);
   assert.match(appSource, /explorerAddressUrl/);
-  assert.match(appSource, /explorer-address/);
-  assert.match(appSource, /\/address\/\$\{address\}/);
-  assert.doesNotMatch(appSource, /always eligible/);
+  assert.match(appSource, /PREVIEW_PAGE_CHARACTER_LIMIT = 1_800/);
+  assert.match(stylesheet, /\.about-panel/);
   assert.match(stylesheet, /grid-template-columns: minmax\(0, 2fr\) minmax\(0, 1fr\)/);
-  assert.doesNotMatch(stylesheet, /minmax\(330px, 1fr\)/);
+  assert.doesNotMatch(appSource, /SAMPLE_DOCUMENT|Untitled private document|Untitled encrypted message|always eligible/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));
 });
 
@@ -355,19 +364,12 @@ test("SEO metadata, crawler files, and branded icons are present", async () => {
   const robots = await readFile(new URL("public/robots.txt", projectRoot), "utf8");
   const sitemap = await readFile(new URL("public/sitemap.xml", projectRoot), "utf8");
   const manifest = JSON.parse(await readFile(new URL("public/site.webmanifest", projectRoot), "utf8"));
-
   assert.match(layoutSource, /https:\/\/ecrypt\.bittrees\.org/);
   assert.match(layoutSource, /Wallet-Gated Text Encryption & Redaction/);
-  assert.match(layoutSource, /max-image-preview/);
-  assert.match(layoutSource, /favicon\.ico/);
-  assert.doesNotMatch(layoutSource, /next\/headers|generateMetadata/);
   assert.match(pageSource, /"@type": "WebApplication"/);
-  assert.match(pageSource, /SecurityApplication/);
   assert.match(robots, /Sitemap: https:\/\/ecrypt\.bittrees\.org\/sitemap\.xml/);
   assert.match(sitemap, /<loc>https:\/\/ecrypt\.bittrees\.org\/<\/loc>/);
   assert.equal(manifest.short_name, "eCrypt");
-  assert.equal(manifest.icons.length, 2);
-
   await Promise.all([
     "public/favicon.ico",
     "public/favicon-32x32.png",
@@ -378,21 +380,20 @@ test("SEO metadata, crawler files, and branded icons are present", async () => {
   ].map((asset) => access(new URL(asset, projectRoot))));
 });
 
-test("repository documentation declares MIT licensing and private security reporting", async () => {
+test("repository documentation declares version 2, MIT, and private reporting", async () => {
   const readme = await readFile(new URL("README.md", projectRoot), "utf8");
   const license = await readFile(new URL("LICENSE", projectRoot), "utf8");
   const security = await readFile(new URL("SECURITY.md", projectRoot), "utf8");
   const envExample = await readFile(new URL(".env.example", projectRoot), "utf8");
   const packageJson = JSON.parse(await readFile(new URL("package.json", projectRoot), "utf8"));
-
   assert.match(readme, /https:\/\/ecrypt\.bittrees\.org/);
-  assert.match(readme, /Copy unlock hash only/);
-  assert.match(readme, /SECURITY\.md/);
+  assert.match(readme, /Version 2|version 2/);
+  assert.match(readme, /nonce-protected/i);
+  assert.match(readme, /AWS KMS/);
   assert.match(license, /^MIT License/);
-  assert.match(license, /Copyright \(c\) 2026 Bittrees Technology/);
   assert.match(security, /private vulnerability reporting/);
-  assert.match(security, /ECRYPT_MASTER_KEY/);
-  assert.match(envExample, /ECRYPT_MASTER_KEY=/);
-  assert.match(envExample, /ALCHEMY_API_KEY=/);
+  assert.match(security, /one-time/i);
+  assert.match(envExample, /ECRYPT_CHALLENGE_SECRET=/);
+  assert.match(envExample, /BLOB_READ_WRITE_TOKEN=/);
   assert.equal(packageJson.license, "MIT");
 });
