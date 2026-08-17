@@ -354,3 +354,22 @@ test("SEO metadata, crawler files, and branded icons are present", async () => {
     "public/og.png",
   ].map((asset) => access(new URL(asset, projectRoot))));
 });
+
+test("repository documentation declares MIT licensing and private security reporting", async () => {
+  const readme = await readFile(new URL("README.md", projectRoot), "utf8");
+  const license = await readFile(new URL("LICENSE", projectRoot), "utf8");
+  const security = await readFile(new URL("SECURITY.md", projectRoot), "utf8");
+  const envExample = await readFile(new URL(".env.example", projectRoot), "utf8");
+  const packageJson = JSON.parse(await readFile(new URL("package.json", projectRoot), "utf8"));
+
+  assert.match(readme, /https:\/\/ecrypt\.bittrees\.org/);
+  assert.match(readme, /Copy unlock hash only/);
+  assert.match(readme, /SECURITY\.md/);
+  assert.match(license, /^MIT License/);
+  assert.match(license, /Copyright \(c\) 2026 Bittrees Technology/);
+  assert.match(security, /private vulnerability reporting/);
+  assert.match(security, /ECRYPT_MASTER_KEY/);
+  assert.match(envExample, /ECRYPT_MASTER_KEY=/);
+  assert.match(envExample, /ALCHEMY_API_KEY=/);
+  assert.equal(packageJson.license, "MIT");
+});
