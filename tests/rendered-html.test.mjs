@@ -344,7 +344,8 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /explorer-address/);
   assert.match(appSource, /\/address\/\$\{address\}/);
   assert.doesNotMatch(appSource, /always eligible/);
-  assert.match(stylesheet, /grid-template-columns: minmax\(0, 2fr\) minmax\(330px, 1fr\)/);
+  assert.match(stylesheet, /grid-template-columns: minmax\(0, 2fr\) minmax\(0, 1fr\)/);
+  assert.doesNotMatch(stylesheet, /minmax\(330px, 1fr\)/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));
 });
 
