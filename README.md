@@ -2,7 +2,7 @@
 
 eCrypt creates portable documents with public text and encrypted inline redactions. A reader connects an EVM wallet, signs a fee-free message, and must satisfy the document's current access policy before the protected passages can be decrypted.
 
-The primary result is copyable plain text: the original public text remains unchanged while every protected passage is replaced inline with its full salted `sha256:…` hash. “Copy unlockable text” appends a machine-readable encrypted footer so the whole result can be pasted directly back into eCrypt; “Copy hash-only text” omits that footer for public documents that do not need to be decrypted later. Share links and `.ecrypt.json` packages remain available too.
+The primary result is copyable plain text: the original public text remains unchanged while every protected passage is replaced inline with its full salted `sha256:…` hash. “Copy all” includes that redacted message and its encrypted unlock-data block; “Copy redacted message only” creates a public document that cannot be decrypted by itself; and “Copy unlock hash only” copies the compact encrypted package without the readable duplicate. Share links and `.ecrypt.json` packages remain available too.
 
 Supported access conditions:
 
