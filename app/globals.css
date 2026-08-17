@@ -469,6 +469,11 @@ main {
   resize: vertical;
 }
 
+.document-preview {
+  margin-top: 30px;
+  scroll-margin-top: 92px;
+}
+
 .document-paper {
   background:
     linear-gradient(90deg, transparent 43px, rgba(166, 63, 50, 0.14) 44px, transparent 45px),
@@ -476,7 +481,7 @@ main {
     #fffefa;
   border: 1px solid #aaa393;
   box-shadow: 0 16px 34px rgba(36, 33, 23, 0.09);
-  margin-top: 30px;
+  margin-top: 0;
   min-height: 330px;
   padding: 28px clamp(28px, 5vw, 68px) 34px;
   position: relative;
@@ -518,7 +523,93 @@ main {
   font-size: clamp(15px, 1.5vw, 18px);
   line-height: 1.92;
   min-height: 130px;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.document-paper-paged {
+  display: flex;
+  flex-direction: column;
+  min-height: 760px;
+}
+
+.document-paper-paged .document-copy {
+  flex: 1;
+}
+
+.document-paper-paged .paper-signature {
+  margin-top: auto;
+}
+
+.paper-page-number {
+  color: var(--muted);
+  display: block;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  margin-top: 22px;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.preview-mode-bar,
+.preview-pagination {
+  align-items: center;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  display: flex;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  gap: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.preview-mode-bar {
+  justify-content: space-between;
+  margin-bottom: 10px;
+  min-height: 43px;
+  padding-left: 12px;
+}
+
+.preview-mode-bar > div {
+  align-self: stretch;
+  display: flex;
+}
+
+.preview-mode-bar button,
+.preview-pagination button {
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: inherit;
+  min-height: 41px;
+  padding: 0 13px;
+  text-transform: inherit;
+}
+
+.preview-mode-bar button + button {
+  border-left: 1px solid var(--line);
+}
+
+.preview-mode-bar button.active {
+  background: var(--ink);
+  color: var(--acid);
+}
+
+.preview-pagination {
+  justify-content: center;
+  margin-top: 10px;
+  padding: 5px;
+}
+
+.preview-pagination span {
+  min-width: 92px;
+  text-align: center;
+}
+
+.preview-pagination button:hover:not(:disabled) {
+  background: var(--surface);
 }
 
 .redaction {
@@ -1072,6 +1163,10 @@ main {
   margin-top: 0;
 }
 
+.unlock-grid .document-preview {
+  margin-top: 0;
+}
+
 .unlock-panel {
   border-left: 1px solid var(--line);
   padding-left: clamp(24px, 4vw, 54px);
@@ -1314,6 +1409,35 @@ footer a {
     background: #fffefa;
     min-height: 300px;
     padding: 24px 19px 28px;
+  }
+
+  .document-paper-paged {
+    min-height: 560px;
+  }
+
+  .preview-mode-bar {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .preview-mode-bar > div {
+    border: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .preview-pagination {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .preview-pagination span {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-height: 32px;
+    padding-top: 9px;
   }
 
   .redaction {
