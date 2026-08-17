@@ -265,6 +265,7 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /\[sha256:\$\{segment\.hash\}\]/);
   assert.match(appSource, /BEGIN ECRYPT UNLOCK DATA/);
   assert.match(appSource, /Copy unlockable text/);
+  assert.match(appSource, /readOnly value=\{unlockableText\}/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /network-picker/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));

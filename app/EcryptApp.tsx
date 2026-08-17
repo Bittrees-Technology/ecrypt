@@ -160,7 +160,9 @@ function decodePackage(input: string): EcryptPackage {
     const dataStart = unlockDataStart + ECRYPT_DATA_BEGIN.length;
     const dataEnd = trimmed.indexOf(ECRYPT_DATA_END, dataStart);
     if (dataEnd < 0) throw new Error("The pasted unlock data is incomplete.");
-    serialized = trimmed.slice(dataStart, dataEnd).replace(/\s/g, "");
+    serialized = trimmed
+      .slice(dataStart, dataEnd)
+      .replace(/[\s\u00ad\u200b-\u200d\u2060\ufeff]/g, "");
   } else if (trimmed.includes("#ecrypt=")) {
     serialized = trimmed.split("#ecrypt=")[1];
   } else if (trimmed.includes("[sha256:")) {
@@ -829,8 +831,8 @@ export default function EcryptApp() {
                     <span className="eyebrow">Redacted text / ready to paste</span>
                     <h2>Original text, inline hashes.</h2>
                     <p>Every public character stays in place. Each protected passage is replaced with its full salted SHA-256 hash.</p>
-                    <label className="field-label" htmlFor="redacted-output">Copyable redacted text</label>
-                    <textarea id="redacted-output" className="redacted-output" readOnly value={redactedText} />
+                    <label className="field-label" htmlFor="redacted-output">Unlockable redacted text — select all and copy</label>
+                    <textarea id="redacted-output" className="redacted-output" readOnly value={unlockableText} spellCheck={false} />
                     <div className="output-actions">
                       <button className="copy-output-button" type="button" onClick={copyUnlockableText}>
                         {copied === "unlockable" ? <Check size={16} /> : <Copy size={16} />}
@@ -841,7 +843,7 @@ export default function EcryptApp() {
                         {copied === "hashes" ? "Copied hash-only text" : "Copy hash-only text"}
                       </button>
                     </div>
-                    <p className="output-note">“Copy unlockable text” adds a machine-readable footer so it can be pasted back into eCrypt. “Hash-only” is cleaner for public documents but cannot be decrypted.</p>
+                    <p className="output-note">Manual copy works too: select everything in the box, then copy and paste it through another app. Keep the encrypted unlock-data footer intact. “Hash-only” is cleaner for public documents but cannot be decrypted.</p>
 
                     <details className="package-options">
                       <summary>Keep an unlockable token-gated version</summary>
