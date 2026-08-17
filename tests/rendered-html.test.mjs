@@ -57,7 +57,7 @@ test("server-renders the finished eCrypt product", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /<title>eCrypt — Wallet-gated document redaction<\/title>/i);
+  assert.match(html, /<title>eCrypt — Wallet-Gated Text Encryption &amp; Redaction<\/title>/i);
   assert.match(html, /Encrypt the redactions/);
   assert.match(html, /Robinhood/);
   assert.doesNotMatch(html, /Robinhood Chain/);
@@ -318,4 +318,33 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /\/address\/\$\{address\}/);
   assert.match(stylesheet, /grid-template-columns: minmax\(0, 2fr\) minmax\(330px, 1fr\)/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));
+});
+
+test("SEO metadata, crawler files, and branded icons are present", async () => {
+  const layoutSource = await readFile(new URL("app/layout.tsx", projectRoot), "utf8");
+  const pageSource = await readFile(new URL("app/page.tsx", projectRoot), "utf8");
+  const robots = await readFile(new URL("public/robots.txt", projectRoot), "utf8");
+  const sitemap = await readFile(new URL("public/sitemap.xml", projectRoot), "utf8");
+  const manifest = JSON.parse(await readFile(new URL("public/site.webmanifest", projectRoot), "utf8"));
+
+  assert.match(layoutSource, /https:\/\/ecrypt\.bittrees\.org/);
+  assert.match(layoutSource, /Wallet-Gated Text Encryption & Redaction/);
+  assert.match(layoutSource, /max-image-preview/);
+  assert.match(layoutSource, /favicon\.ico/);
+  assert.doesNotMatch(layoutSource, /next\/headers|generateMetadata/);
+  assert.match(pageSource, /"@type": "WebApplication"/);
+  assert.match(pageSource, /SecurityApplication/);
+  assert.match(robots, /Sitemap: https:\/\/ecrypt\.bittrees\.org\/sitemap\.xml/);
+  assert.match(sitemap, /<loc>https:\/\/ecrypt\.bittrees\.org\/<\/loc>/);
+  assert.equal(manifest.short_name, "eCrypt");
+  assert.equal(manifest.icons.length, 2);
+
+  await Promise.all([
+    "public/favicon.ico",
+    "public/favicon-32x32.png",
+    "public/apple-touch-icon.png",
+    "public/icon-192.png",
+    "public/icon.png",
+    "public/og.png",
+  ].map((asset) => access(new URL(asset, projectRoot))));
 });
