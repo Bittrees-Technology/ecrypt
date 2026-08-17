@@ -20,7 +20,7 @@ import {
   Upload,
   Wallet,
 } from "lucide-react";
-import { type ChangeEvent, type ClipboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type ClipboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessPolicy,
   AccessRule,
@@ -49,6 +49,13 @@ declare global {
 
 type Mode = "compose" | "open";
 type Notice = { tone: "error" | "success" | "info"; text: string } | null;
+type PreviewMode = "continuous" | "pages";
+type PreviewPiece =
+  | { key: string; kind: "public"; text: string }
+  | { key: string; kind: "revealed"; text: string }
+  | { key: string; kind: "redaction"; label: string; preview?: boolean };
+
+const PREVIEW_PAGE_CHARACTER_LIMIT = 1_800;
 
 const ADDABLE_WALLET_NETWORKS: Partial<Record<NetworkKey, {
   chainName: string;
@@ -143,6 +150,65 @@ function markedSegments(value: string) {
   }
   if (cursor < value.length) segments.push({ kind: "public", text: value.slice(cursor) });
   return segments;
+}
+
+function takePreviewChunk(value: string, limit: number): [string, string] {
+  const characters = Array.from(value);
+  if (characters.length <= limit) return [value, ""];
+
+  let cut = limit;
+  const preferredFloor = Math.floor(limit * 0.6);
+  for (let index = limit - 1; index >= preferredFloor; index -= 1) {
+    if (/\s/.test(characters[index])) {
+      cut = index + 1;
+      break;
+    }
+  }
+  return [characters.slice(0, cut).join(""), characters.slice(cut).join("")];
+}
+
+function paginatePreviewPieces(pieces: PreviewPiece[]): PreviewPiece[][] {
+  const pages: PreviewPiece[][] = [[]];
+  let usedCharacters = 0;
+
+  function startPage() {
+    pages.push([]);
+    usedCharacters = 0;
+  }
+
+  for (const piece of pieces) {
+    if (piece.kind === "redaction") {
+      const displayLength = Math.max(24, Array.from(piece.label).length);
+      if (usedCharacters > 0 && usedCharacters + displayLength > PREVIEW_PAGE_CHARACTER_LIMIT) {
+        startPage();
+      }
+      pages[pages.length - 1].push(piece);
+      usedCharacters += displayLength;
+      continue;
+    }
+
+    let remaining = piece.text;
+    let offset = 0;
+    while (remaining) {
+      let available = PREVIEW_PAGE_CHARACTER_LIMIT - usedCharacters;
+      if (available < 160 && usedCharacters > 0) {
+        startPage();
+        available = PREVIEW_PAGE_CHARACTER_LIMIT;
+      }
+      const [chunk, rest] = takePreviewChunk(remaining, available);
+      pages[pages.length - 1].push({
+        ...piece,
+        key: `${piece.key}-${offset}`,
+        text: chunk,
+      });
+      usedCharacters += Array.from(chunk).length;
+      offset += Array.from(chunk).length;
+      remaining = rest;
+      if (remaining) startPage();
+    }
+  }
+
+  return pages;
 }
 
 function encodedPackage(documentPackage: EcryptPackage): string {
@@ -354,6 +420,111 @@ function ExplorerAddress({
   );
 }
 
+function PreviewPieces({ pieces }: { pieces: PreviewPiece[] }) {
+  return pieces.map((piece) => {
+    if (piece.kind === "public") return <span key={piece.key}>{piece.text}</span>;
+    if (piece.kind === "revealed") {
+      return <mark className="revealed-passage" key={piece.key}>{piece.text}</mark>;
+    }
+    return (
+      <span
+        className={`redaction${piece.preview ? " preview-redaction" : ""}`}
+        key={piece.key}
+        title={piece.preview ? "Passage marked for encryption" : "Encrypted redaction"}
+      >
+        <LockKeyhole size={12} aria-hidden="true" /> {piece.label}
+      </span>
+    );
+  });
+}
+
+function DocumentPreview({
+  ariaLabel,
+  metaLeft,
+  metaRight,
+  title,
+  pieces,
+  emptyMessage,
+  signature,
+}: {
+  ariaLabel: string;
+  metaLeft: string;
+  metaRight: string;
+  title?: string;
+  pieces: PreviewPiece[];
+  emptyMessage?: string;
+  signature?: ReactNode;
+}) {
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("continuous");
+  const [page, setPage] = useState(0);
+  const pages = paginatePreviewPieces(pieces);
+  const hasMultiplePages = pages.length > 1;
+  const safePage = Math.min(page, pages.length - 1);
+  const pagePieces = previewMode === "pages" && hasMultiplePages ? pages[safePage] : pieces;
+
+  function selectPage(nextPage: number) {
+    setPage(Math.max(0, Math.min(nextPage, pages.length - 1)));
+    requestAnimationFrame(() => previewRef.current?.scrollIntoView({ block: "start" }));
+  }
+
+  return (
+    <div className="document-preview" ref={previewRef}>
+      {hasMultiplePages && (
+        <div className="preview-mode-bar">
+          <span>Preview view</span>
+          <div role="group" aria-label="Preview display mode">
+            <button
+              className={previewMode === "continuous" ? "active" : ""}
+              type="button"
+              aria-pressed={previewMode === "continuous"}
+              onClick={() => setPreviewMode("continuous")}
+            >
+              Continuous
+            </button>
+            <button
+              className={previewMode === "pages" ? "active" : ""}
+              type="button"
+              aria-pressed={previewMode === "pages"}
+              onClick={() => { setPreviewMode("pages"); setPage(0); }}
+            >
+              Pages
+            </button>
+          </div>
+        </div>
+      )}
+
+      <article
+        className={`document-paper${previewMode === "pages" && hasMultiplePages ? " document-paper-paged" : ""}`}
+        aria-label={ariaLabel}
+      >
+        <div className="paper-meta">
+          <span>{metaLeft}</span>
+          <span>{metaRight}</span>
+        </div>
+        {title?.trim() && <h3>{title}</h3>}
+        <div className="document-copy">
+          {pieces.length ? <PreviewPieces pieces={pagePieces} /> : <span className="empty-copy">{emptyMessage}</span>}
+        </div>
+        {signature}
+        {previewMode === "pages" && hasMultiplePages && (
+          <span className="paper-page-number">Page {safePage + 1} of {pages.length}</span>
+        )}
+      </article>
+
+      {previewMode === "pages" && hasMultiplePages && (
+        <nav className="preview-pagination" aria-label="Document preview pages">
+          <button type="button" onClick={() => selectPage(0)} disabled={safePage === 0}>First</button>
+          <button type="button" onClick={() => selectPage(safePage - 1)} disabled={safePage === 0}>Previous</button>
+          <span aria-live="polite">Page {safePage + 1} of {pages.length}</span>
+          <button type="button" onClick={() => selectPage(safePage + 1)} disabled={safePage === pages.length - 1}>Next</button>
+          <button type="button" onClick={() => selectPage(pages.length - 1)} disabled={safePage === pages.length - 1}>Last</button>
+        </nav>
+      )}
+    </div>
+  );
+}
+
 function RedactedDocument({
   documentPackage,
   revealed,
@@ -361,61 +532,46 @@ function RedactedDocument({
   documentPackage: EcryptPackage;
   revealed: Record<number, string>;
 }) {
+  const pieces: PreviewPiece[] = documentPackage.segments.map((segment, index) => {
+    if (segment.kind === "public") {
+      return { key: `${index}-public`, kind: "public", text: segment.text };
+    }
+    const plaintext = revealed[index];
+    return plaintext
+      ? { key: `${index}-revealed`, kind: "revealed", text: plaintext }
+      : { key: `${index}-redacted`, kind: "redaction", label: `sha256:${segment.hash.slice(0, 12)}` };
+  });
   return (
-    <article className="document-paper" aria-label={documentPackage.title ? `${documentPackage.title} encrypted document` : "Encrypted document"}>
-      <div className="paper-meta">
-        <span>eCrypt protected text</span>
-        <span>{new Date(documentPackage.createdAt).toLocaleDateString()}</span>
-      </div>
-      {documentPackage.title && <h3>{documentPackage.title}</h3>}
-      <div className="document-copy">
-        {documentPackage.segments.map((segment, index) => {
-          if (segment.kind === "public") return <span key={`${index}-public`}>{segment.text}</span>;
-          const plaintext = revealed[index];
-          return plaintext ? (
-            <mark className="revealed-passage" key={`${index}-revealed`}>
-              {plaintext}
-            </mark>
-          ) : (
-            <span className="redaction" key={`${index}-redacted`} title="Encrypted redaction">
-              <LockKeyhole size={12} aria-hidden="true" /> sha256:{segment.hash.slice(0, 12)}
-            </span>
-          );
-        })}
-      </div>
-      <div className="paper-signature">
+    <DocumentPreview
+      ariaLabel={documentPackage.title ? `${documentPackage.title} encrypted document` : "Encrypted document"}
+      metaLeft="eCrypt protected text"
+      metaRight={new Date(documentPackage.createdAt).toLocaleDateString()}
+      title={documentPackage.title}
+      pieces={pieces}
+      signature={<div className="paper-signature">
         <span>Protected by</span>
         <ExplorerAddress address={documentPackage.author} />
-      </div>
-    </article>
+      </div>}
+    />
   );
 }
 
 function DraftPreview({ value, title }: { value: string; title: string }) {
   const segments = markedSegments(value);
+  const pieces: PreviewPiece[] = segments.map((segment, index) =>
+    segment.kind === "secret"
+      ? { key: `${index}-secret`, kind: "redaction", label: "encrypt on seal", preview: true }
+      : { key: `${index}-public`, kind: "public", text: segment.text },
+  );
   return (
-    <article className="document-paper draft-paper" aria-label="Redaction preview">
-      <div className="paper-meta">
-        <span>Live redaction preview</span>
-        <span>Draft</span>
-      </div>
-      {title.trim() && <h3>{title}</h3>}
-      <div className="document-copy">
-        {segments.length ? (
-          segments.map((segment, index) =>
-            segment.kind === "secret" ? (
-              <span className="redaction preview-redaction" key={`${index}-secret`}>
-                <LockKeyhole size={12} aria-hidden="true" /> encrypt on seal
-              </span>
-            ) : (
-              <span key={`${index}-public`}>{segment.text}</span>
-            ),
-          )
-        ) : (
-          <span className="empty-copy">Write something, then select text to redact it.</span>
-        )}
-      </div>
-    </article>
+    <DocumentPreview
+      ariaLabel="Redaction preview"
+      metaLeft="Live redaction preview"
+      metaRight="Draft"
+      title={title}
+      pieces={pieces}
+      emptyMessage="Write something, then select text to redact it."
+    />
   );
 }
 
