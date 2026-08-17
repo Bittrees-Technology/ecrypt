@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isAddress } from "viem";
+import { getAddress, isAddress } from "viem";
 import { normalizePolicy } from "../../../lib/ecrypt";
 import {
   assertRateLimit,
@@ -42,7 +42,8 @@ export async function POST(request: Request) {
       "unlock",
       requestHost(request),
     );
-    if (!(await policyAllows(policy, wallet))) {
+    const isCreator = wallet === getAddress(body.author);
+    if (!isCreator && !(await policyAllows(policy, wallet))) {
       return NextResponse.json(
         { error: "This wallet does not currently meet the document’s access policy." },
         { status: 403 },
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 
     const key = unwrapDocumentKey(body.wrappedKey, body.author, policy);
     return NextResponse.json(
-      { key: key.toString("base64url"), wallet },
+      { key: key.toString("base64url"), wallet, access: isCreator ? "creator" : "policy" },
       { headers: { "cache-control": "no-store, private" } },
     );
   } catch (error) {
@@ -59,4 +60,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
-
