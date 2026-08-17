@@ -72,11 +72,6 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const ECRYPT_DATA_BEGIN = "-----BEGIN ECRYPT UNLOCK DATA-----";
 const ECRYPT_DATA_END = "-----END ECRYPT UNLOCK DATA-----";
-const SAMPLE_DOCUMENT = `BOARD AUTHORIZATION · 08/17/2026
-
-The undersigned approves the transfer of [[1,250,000 USDC]] from the treasury to [[0x7A4b…91F2]] upon completion of the transaction review.
-
-This authorization remains valid until [[September 30, 2026 at 17:00 UTC]]. All other terms remain public and verifiable.`;
 
 function randomId(prefix: string) {
   return `${prefix}-${crypto.randomUUID().slice(0, 12)}`;
@@ -353,12 +348,12 @@ function RedactedDocument({
   revealed: Record<number, string>;
 }) {
   return (
-    <article className="document-paper" aria-label={`${documentPackage.title} encrypted document`}>
+    <article className="document-paper" aria-label={documentPackage.title ? `${documentPackage.title} encrypted document` : "Encrypted document"}>
       <div className="paper-meta">
         <span>eCrypt protected text</span>
         <span>{new Date(documentPackage.createdAt).toLocaleDateString()}</span>
       </div>
-      <h3>{documentPackage.title}</h3>
+      {documentPackage.title && <h3>{documentPackage.title}</h3>}
       <div className="document-copy">
         {documentPackage.segments.map((segment, index) => {
           if (segment.kind === "public") return <span key={`${index}-public`}>{segment.text}</span>;
@@ -390,7 +385,7 @@ function DraftPreview({ value, title }: { value: string; title: string }) {
         <span>Live redaction preview</span>
         <span>Draft</span>
       </div>
-      <h3>{title || "Untitled private document"}</h3>
+      {title.trim() && <h3>{title}</h3>}
       <div className="document-copy">
         {segments.length ? (
           segments.map((segment, index) =>
@@ -416,7 +411,7 @@ export default function EcryptApp() {
   const [mode, setMode] = useState<Mode>("compose");
   const [wallet, setWallet] = useState("");
   const [title, setTitle] = useState("");
-  const [body, setBody] = useState(SAMPLE_DOCUMENT);
+  const [body, setBody] = useState("");
   const [matchMode, setMatchMode] = useState<MatchMode>("any");
   const [rules, setRules] = useState<AccessRule[]>([
     { id: "rule-wallet", kind: "wallet", address: "" },
@@ -649,7 +644,7 @@ export default function EcryptApp() {
       const documentPackage: EcryptPackage = {
         version: 1,
         id: randomId("doc"),
-        title: title.trim().slice(0, 160) || "Untitled encrypted message",
+        title: title.trim().slice(0, 160),
         author: wrapped.author,
         createdAt: new Date().toISOString(),
         policy: wrapped.policy,
@@ -875,7 +870,7 @@ export default function EcryptApp() {
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   maxLength={160}
-                  placeholder="Untitled encrypted message"
+                  placeholder="Optional title"
                 />
                 <label className="field-label editor-label" htmlFor="document-body">
                   Body <span>Select text and use “Redact selection,” or wrap it in [[double brackets]].</span>
@@ -886,6 +881,7 @@ export default function EcryptApp() {
                   className="document-editor"
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
+                  placeholder="Write or paste your text here…"
                   spellCheck
                 />
                 <DraftPreview value={body} title={title} />

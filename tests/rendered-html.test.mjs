@@ -304,6 +304,9 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /handlePackageFile/);
   assert.match(appSource, /Document title <span>\(optional\)<\/span>/);
   assert.doesNotMatch(appSource, /Give the document a title before sealing it/);
+  assert.doesNotMatch(appSource, /SAMPLE_DOCUMENT|Untitled private document|Untitled encrypted message/);
+  assert.match(appSource, /const \[body, setBody\] = useState\(""\)/);
+  assert.match(appSource, /documentPackage\.title && <h3>/);
   assert.match(appSource, /readOnly value=\{unlockableText\}/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /network-picker/);
