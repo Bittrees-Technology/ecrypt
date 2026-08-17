@@ -697,13 +697,13 @@ export default function EcryptApp() {
                           <input id={`${rule.id}-contract`} value={rule.contract || ""} onChange={(event) => updateRule(rule.id, { contract: event.target.value })} placeholder="0x…" autoComplete="off" />
                           {(rule.kind === "erc721" || rule.kind === "erc1155") && (
                             <>
-                              <label className="field-label" htmlFor={`${rule.id}-token`}>Token ID {rule.kind === "erc721" && <span>(optional)</span>}</label>
-                              <input id={`${rule.id}-token`} inputMode="numeric" value={rule.tokenId || ""} onChange={(event) => updateRule(rule.id, { tokenId: event.target.value })} placeholder={rule.kind === "erc721" ? "Any token" : "Required"} />
+                              <label className="field-label" htmlFor={`${rule.id}-token`}>Token ID <span>(optional)</span></label>
+                              <input id={`${rule.id}-token`} inputMode="numeric" value={rule.tokenId || ""} onChange={(event) => updateRule(rule.id, { tokenId: event.target.value })} placeholder="Any token ID" />
                             </>
                           )}
                           {(rule.kind === "erc20" || rule.kind === "erc1155") && (
                             <>
-                              <label className="field-label" htmlFor={`${rule.id}-minimum`}>Minimum balance</label>
+                              <label className="field-label" htmlFor={`${rule.id}-minimum`}>Minimum balance {rule.kind === "erc1155" && <span>(for one ID)</span>}</label>
                               <input id={`${rule.id}-minimum`} inputMode="decimal" value={rule.minimum || "1"} onChange={(event) => updateRule(rule.id, { minimum: event.target.value })} />
                             </>
                           )}

@@ -128,15 +128,15 @@ export function normalizePolicy(input: unknown): AccessPolicy {
     }
 
     if (rule.kind === "erc1155") {
-      if (!rule.tokenId || !INTEGER_VALUE.test(rule.tokenId)) {
-        throw new Error(`Condition ${index + 1} needs an ERC-1155 token ID.`);
+      if (rule.tokenId && !INTEGER_VALUE.test(rule.tokenId)) {
+        throw new Error(`Condition ${index + 1} has an invalid token ID.`);
       }
       if (rule.minimum && !INTEGER_VALUE.test(rule.minimum)) {
         throw new Error(`Condition ${index + 1} needs a whole-number minimum.`);
       }
       return {
         ...base,
-        tokenId: rule.tokenId,
+        tokenId: rule.tokenId || undefined,
         minimum: rule.minimum || "1",
       };
     }
@@ -182,8 +182,8 @@ export function describeRule(rule: AccessRule): string {
       : `${network} ERC-721 ${contract} · any token`;
   }
   if (rule.kind === "erc1155") {
-    return `${network} ERC-1155 ${contract} · #${rule.tokenId}`;
+    const token = rule.tokenId ? `#${rule.tokenId}` : "any token ID";
+    return `${network} ERC-1155 ${contract} · ${token} · ≥ ${rule.minimum || "1"}`;
   }
   return `${network} ERC-20 ${contract} · ≥ ${rule.minimum || "1"}`;
 }
-

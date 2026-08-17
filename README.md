@@ -7,7 +7,7 @@ Supported access conditions:
 - a specific wallet address
 - an ERC-20 minimum balance
 - ownership of any token, or one token ID, from an ERC-721 collection
-- an ERC-1155 token ID and minimum balance
+- ownership of any token ID, or one specific token ID, from an ERC-1155 contract, with a minimum balance per ID
 - up to five conditions combined with `ANY` or `ALL`
 
 Supported networks:
