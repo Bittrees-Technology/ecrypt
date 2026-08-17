@@ -9,6 +9,7 @@ import {
   Eye,
   FileLock2,
   KeyRound,
+  LogOut,
   LockKeyhole,
   Network,
   Plus,
@@ -17,7 +18,7 @@ import {
   Upload,
   Wallet,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ClipboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessPolicy,
   AccessRule,
@@ -47,6 +48,8 @@ type Notice = { tone: "error" | "success" | "info"; text: string } | null;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const ECRYPT_DATA_BEGIN = "-----BEGIN ECRYPT UNLOCK DATA-----";
+const ECRYPT_DATA_END = "-----END ECRYPT UNLOCK DATA-----";
 const SAMPLE_DOCUMENT = `BOARD AUTHORIZATION · 08/17/2026
 
 The undersigned approves the transfer of [[1,250,000 USDC]] from the treasury to [[0x7A4b…91F2]] upon completion of the transaction review.
@@ -103,6 +106,22 @@ function markedSegments(value: string) {
   return segments;
 }
 
+function encodedPackage(documentPackage: EcryptPackage): string {
+  return bytesToBase64Url(encoder.encode(JSON.stringify(documentPackage)));
+}
+
+function redactedPackageText(documentPackage: EcryptPackage): string {
+  return documentPackage.segments
+    .map((segment) =>
+      segment.kind === "public" ? segment.text : `[sha256:${segment.hash}]`,
+    )
+    .join("");
+}
+
+function unlockablePackageText(documentPackage: EcryptPackage): string {
+  return `${redactedPackageText(documentPackage)}\n\n${ECRYPT_DATA_BEGIN}\n${encodedPackage(documentPackage)}\n${ECRYPT_DATA_END}`;
+}
+
 function isEcryptPackage(value: unknown): value is EcryptPackage {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<EcryptPackage>;
@@ -131,9 +150,22 @@ function isEcryptPackage(value: unknown): value is EcryptPackage {
 }
 
 function decodePackage(input: string): EcryptPackage {
+  if (input.length > 2_000_000) {
+    throw new Error("This eCrypt text is too large to open safely.");
+  }
   const trimmed = input.trim();
   let serialized = trimmed;
-  if (trimmed.includes("#ecrypt=")) serialized = trimmed.split("#ecrypt=")[1];
+  const unlockDataStart = trimmed.indexOf(ECRYPT_DATA_BEGIN);
+  if (unlockDataStart >= 0) {
+    const dataStart = unlockDataStart + ECRYPT_DATA_BEGIN.length;
+    const dataEnd = trimmed.indexOf(ECRYPT_DATA_END, dataStart);
+    if (dataEnd < 0) throw new Error("The pasted unlock data is incomplete.");
+    serialized = trimmed.slice(dataStart, dataEnd).replace(/\s/g, "");
+  } else if (trimmed.includes("#ecrypt=")) {
+    serialized = trimmed.split("#ecrypt=")[1];
+  } else if (trimmed.includes("[sha256:")) {
+    throw new Error("This is hash-only text. Ask the sender to use “Copy unlockable text” so the encrypted passages travel with it.");
+  }
   if (!serialized.startsWith("{")) {
     serialized = decoder.decode(base64UrlToBytes(serialized));
   }
@@ -257,7 +289,7 @@ function RedactedDocument({
   return (
     <article className="document-paper" aria-label={`${documentPackage.title} encrypted document`}>
       <div className="paper-meta">
-        <span>eCrypt sealed document</span>
+        <span>eCrypt protected text</span>
         <span>{new Date(documentPackage.createdAt).toLocaleDateString()}</span>
       </div>
       <h3>{documentPackage.title}</h3>
@@ -277,7 +309,7 @@ function RedactedDocument({
         })}
       </div>
       <div className="paper-signature">
-        <span>Sealed by</span>
+        <span>Protected by</span>
         <code>{shortAddress(documentPackage.author)}</code>
       </div>
     </article>
@@ -328,21 +360,19 @@ export default function EcryptApp() {
   const [openedPackage, setOpenedPackage] = useState<EcryptPackage | null>(null);
   const [packageInput, setPackageInput] = useState("");
   const [revealed, setRevealed] = useState<Record<number, string>>({});
-  const [copied, setCopied] = useState<"text" | "link" | null>(null);
+  const [copied, setCopied] = useState<"unlockable" | "hashes" | "link" | null>(null);
 
   const shareUrl = useMemo(() => {
     if (!sealedPackage || typeof window === "undefined") return "";
-    const encoded = bytesToBase64Url(encoder.encode(JSON.stringify(sealedPackage)));
-    return `${window.location.origin}/#ecrypt=${encoded}`;
+    return `${window.location.origin}/#ecrypt=${encodedPackage(sealedPackage)}`;
   }, [sealedPackage]);
 
   const redactedText = useMemo(() => {
-    if (!sealedPackage) return "";
-    return sealedPackage.segments
-      .map((segment) =>
-        segment.kind === "public" ? segment.text : `[sha256:${segment.hash}]`,
-      )
-      .join("");
+    return sealedPackage ? redactedPackageText(sealedPackage) : "";
+  }, [sealedPackage]);
+
+  const unlockableText = useMemo(() => {
+    return sealedPackage ? unlockablePackageText(sealedPackage) : "";
   }, [sealedPackage]);
 
   useEffect(() => {
@@ -384,6 +414,16 @@ export default function EcryptApp() {
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "Wallet connection failed." });
     }
+  }
+
+  async function handleWalletAction() {
+    if (!wallet) {
+      await handleConnect();
+      return;
+    }
+    setWallet("");
+    setRevealed({});
+    setNotice({ tone: "info", text: "Wallet disconnected from eCrypt and revealed text was hidden. Your wallet app may still list this site as approved." });
   }
 
   function redactSelection() {
@@ -496,7 +536,7 @@ export default function EcryptApp() {
       };
       setSealedPackage(documentPackage);
       setRevealed({});
-      setNotice({ tone: "success", text: "Copyable redacted text is ready. Use the private share link only when someone needs to unlock it." });
+      setNotice({ tone: "success", text: "Redacted text is ready. Copy the unlockable version to decrypt it later, or use hash-only text for public documents." });
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The document could not be sealed." });
     } finally {
@@ -517,21 +557,47 @@ export default function EcryptApp() {
   async function copyRedactedText() {
     try {
       await navigator.clipboard.writeText(redactedText);
-      setCopied("text");
-      window.setTimeout(() => setCopied((current) => (current === "text" ? null : current)), 1800);
+      setCopied("hashes");
+      window.setTimeout(() => setCopied((current) => (current === "hashes" ? null : current)), 1800);
     } catch {
       setNotice({ tone: "error", text: "The redacted text could not be copied automatically. You can select it manually." });
     }
   }
 
+  async function copyUnlockableText() {
+    try {
+      await navigator.clipboard.writeText(unlockableText);
+      setCopied("unlockable");
+      window.setTimeout(() => setCopied((current) => (current === "unlockable" ? null : current)), 1800);
+    } catch {
+      setNotice({ tone: "error", text: "The unlockable text could not be copied automatically. You can select the private share link instead." });
+    }
+  }
+
+  function openPackageText(value: string) {
+    const loaded = decodePackage(value);
+    setOpenedPackage(loaded);
+    setRevealed({});
+    setNotice({ tone: "success", text: "Unlock data found. Connect an eligible wallet to reveal the redactions." });
+  }
+
   function loadPackage() {
     try {
-      const loaded = decodePackage(packageInput);
-      setOpenedPackage(loaded);
-      setRevealed({});
-      setNotice({ tone: "success", text: "Encrypted document loaded." });
+      openPackageText(packageInput);
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "The package could not be opened." });
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "The pasted text could not be opened." });
+    }
+  }
+
+  function handlePackagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = event.clipboardData.getData("text/plain");
+    if (!pasted) return;
+    event.preventDefault();
+    setPackageInput(pasted);
+    try {
+      openPackageText(pasted);
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "The pasted text could not be opened." });
     }
   }
 
@@ -577,9 +643,15 @@ export default function EcryptApp() {
           <span>CRYPT</span>
         </a>
         <div className="header-note"><span className="status-dot" /> Client-side encryption</div>
-        <button className="wallet-button" onClick={handleConnect} type="button">
-          <Wallet size={16} aria-hidden="true" />
-          {wallet ? shortAddress(wallet) : "Connect wallet"}
+        <button
+          className={`wallet-button${wallet ? " wallet-connected" : ""}`}
+          onClick={handleWalletAction}
+          type="button"
+          aria-label={wallet ? `Disconnect wallet ${wallet}` : "Connect wallet"}
+          title={wallet ? "Disconnect wallet from eCrypt" : "Connect wallet"}
+        >
+          {wallet ? <LogOut size={16} aria-hidden="true" /> : <Wallet size={16} aria-hidden="true" />}
+          {wallet ? `Disconnect ${shortAddress(wallet)}` : "Connect wallet"}
         </button>
       </header>
 
@@ -617,7 +689,7 @@ export default function EcryptApp() {
               onClick={() => setMode("open")}
               type="button"
             >
-              <KeyRound size={17} /> Open &amp; unlock <span>02</span>
+              <KeyRound size={17} /> Paste &amp; decrypt <span>02</span>
             </button>
           </div>
 
@@ -671,7 +743,7 @@ export default function EcryptApp() {
                   </div>
                   <Network size={20} aria-hidden="true" />
                 </div>
-                <p className="policy-intro">Ownership is checked live each time someone asks to decrypt.</p>
+                <p className="policy-intro">Choose where each token is checked. Your wallet can stay on its current network while signing.</p>
 
                 {rules.length > 1 && (
                   <div className="match-toggle" aria-label="Access condition mode">
@@ -708,10 +780,20 @@ export default function EcryptApp() {
                         </>
                       ) : (
                         <>
-                          <label className="field-label" htmlFor={`${rule.id}-network`}>Network</label>
-                          <select id={`${rule.id}-network`} value={rule.network} onChange={(event) => updateRule(rule.id, { network: event.target.value as NetworkKey })}>
-                            {(Object.entries(NETWORKS) as [NetworkKey, (typeof NETWORKS)[NetworkKey]][]).map(([key, network]) => <option value={key} key={key}>{network.label}</option>)}
-                          </select>
+                          <span className="field-label" id={`${rule.id}-network-label`}>Network</span>
+                          <div className="network-picker" role="group" aria-labelledby={`${rule.id}-network-label`}>
+                            {(Object.entries(NETWORKS) as [NetworkKey, (typeof NETWORKS)[NetworkKey]][]).map(([key, network]) => (
+                              <button
+                                className={rule.network === key ? "active" : ""}
+                                type="button"
+                                aria-pressed={rule.network === key}
+                                onClick={() => updateRule(rule.id, { network: key })}
+                                key={key}
+                              >
+                                {network.label}
+                              </button>
+                            ))}
+                          </div>
                           <label className="field-label" htmlFor={`${rule.id}-contract`}>Contract address</label>
                           <input id={`${rule.id}-contract`} value={rule.contract || ""} onChange={(event) => updateRule(rule.id, { contract: event.target.value })} placeholder="0x…" autoComplete="off" />
                           {(rule.kind === "erc721" || rule.kind === "erc1155") && (
@@ -749,10 +831,17 @@ export default function EcryptApp() {
                     <p>Every public character stays in place. Each protected passage is replaced with its full salted SHA-256 hash.</p>
                     <label className="field-label" htmlFor="redacted-output">Copyable redacted text</label>
                     <textarea id="redacted-output" className="redacted-output" readOnly value={redactedText} />
-                    <button className="copy-output-button" type="button" onClick={copyRedactedText}>
-                      {copied === "text" ? <Check size={16} /> : <Copy size={16} />}
-                      {copied === "text" ? "Copied redacted text" : "Copy redacted text"}
-                    </button>
+                    <div className="output-actions">
+                      <button className="copy-output-button" type="button" onClick={copyUnlockableText}>
+                        {copied === "unlockable" ? <Check size={16} /> : <Copy size={16} />}
+                        {copied === "unlockable" ? "Copied unlockable text" : "Copy unlockable text"}
+                      </button>
+                      <button className="copy-hash-button" type="button" onClick={copyRedactedText}>
+                        {copied === "hashes" ? <Check size={16} /> : <Copy size={16} />}
+                        {copied === "hashes" ? "Copied hash-only text" : "Copy hash-only text"}
+                      </button>
+                    </div>
+                    <p className="output-note">“Copy unlockable text” adds a machine-readable footer so it can be pasted back into eCrypt. “Hash-only” is cleaner for public documents but cannot be decrypted.</p>
 
                     <details className="package-options">
                       <summary>Keep an unlockable token-gated version</summary>
@@ -773,18 +862,18 @@ export default function EcryptApp() {
               {!openedPackage ? (
                 <div className="open-empty">
                   <div className="open-icon"><Upload size={26} /></div>
-                  <span className="eyebrow">Portable ciphertext</span>
-                  <h2>Open an encrypted document</h2>
-                  <p>Paste an eCrypt share link, encoded package, or the contents of a downloaded <code>.ecrypt.json</code> file.</p>
-                  <textarea value={packageInput} onChange={(event) => setPackageInput(event.target.value)} placeholder="https://ecrypt.bittrees.org/#ecrypt=…" aria-label="Encrypted document package" />
-                  <button className="seal-button open-button" type="button" onClick={loadPackage} disabled={!packageInput.trim()}><FileLock2 size={18} /> Load encrypted document <ArrowRight size={18} /></button>
+                  <span className="eyebrow">Copy / paste unlock</span>
+                  <h2>Paste redacted text to decrypt</h2>
+                  <p>Paste text created with “Copy unlockable text.” eCrypt detects its private footer automatically. Share links and <code>.ecrypt.json</code> packages still work too.</p>
+                  <textarea value={packageInput} onChange={(event) => setPackageInput(event.target.value)} onPaste={handlePackagePaste} placeholder={`Public text [sha256:…]\n\n${ECRYPT_DATA_BEGIN}\n…`} aria-label="Unlockable redacted text" />
+                  <button className="seal-button open-button" type="button" onClick={loadPackage} disabled={!packageInput.trim()}><FileLock2 size={18} /> Open pasted text <ArrowRight size={18} /></button>
                 </div>
               ) : (
                 <div className="unlock-grid">
                   <div>
                     <div className="panel-heading">
                       <div><span className="eyebrow">Document / ciphertext</span><h2>Public until proven eligible</h2></div>
-                      <button className="compact-action" type="button" onClick={() => { setOpenedPackage(null); setRevealed({}); window.history.replaceState(null, "", window.location.pathname); }}><Upload size={15} /> Open another</button>
+                      <button className="compact-action" type="button" onClick={() => { setOpenedPackage(null); setRevealed({}); window.history.replaceState(null, "", window.location.pathname); }}><Upload size={15} /> Paste another</button>
                     </div>
                     <RedactedDocument documentPackage={openedPackage} revealed={revealed} />
                   </div>

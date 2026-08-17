@@ -12,7 +12,7 @@ export const NETWORKS = {
     explorer: "https://basescan.org",
   },
   robinhood: {
-    label: "Robinhood Chain",
+    label: "Robinhood",
     chainId: 4663,
     explorer: "https://robinhoodchain.blockscout.com",
   },

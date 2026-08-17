@@ -150,6 +150,17 @@ code {
   color: var(--ink);
 }
 
+.wallet-button.wallet-connected {
+  background: transparent;
+  color: var(--ink);
+}
+
+.wallet-button.wallet-connected:hover {
+  background: #f6ded8;
+  border-color: var(--red);
+  color: var(--red);
+}
+
 main {
   margin: 0 auto;
   max-width: 1510px;
@@ -634,6 +645,28 @@ main {
   color: #898a82;
 }
 
+.network-picker {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.network-picker button {
+  background: white;
+  border: 1px solid var(--line);
+  font-size: 9px;
+  font-weight: 750;
+  min-height: 36px;
+  padding: 0 6px;
+}
+
+.network-picker button:hover,
+.network-picker button.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: white;
+}
+
 .text-action {
   background: transparent;
   border: 0;
@@ -764,6 +797,38 @@ main {
 .copy-output-button:hover {
   background: var(--ink);
   color: white;
+}
+
+.output-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.copy-hash-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--ink);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  min-height: 44px;
+  padding: 0 16px;
+  text-transform: uppercase;
+}
+
+.copy-hash-button:hover {
+  background: var(--ink);
+  color: white;
+}
+
+.sealed-result .output-note {
+  font-size: 10px;
+  margin-top: 10px;
+  max-width: 760px;
 }
 
 .package-options {

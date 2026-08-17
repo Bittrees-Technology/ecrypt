@@ -58,7 +58,9 @@ test("server-renders the finished eCrypt product", async () => {
   const html = await response.text();
   assert.match(html, /<title>eCrypt — Wallet-gated document redaction<\/title>/i);
   assert.match(html, /Encrypt the redactions/);
-  assert.match(html, /Robinhood Chain/);
+  assert.match(html, /Robinhood/);
+  assert.doesNotMatch(html, /Robinhood Chain/);
+  assert.match(html, /Paste &amp; decrypt/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -261,6 +263,9 @@ test("starter-only assets are gone", async () => {
   const appSource = await readFile(new URL("app/EcryptApp.tsx", projectRoot), "utf8");
   assert.doesNotMatch(packageJson, /react-loading-skeleton|site-creator-vinext-starter/);
   assert.match(appSource, /\[sha256:\$\{segment\.hash\}\]/);
-  assert.match(appSource, /Copy redacted text/);
+  assert.match(appSource, /BEGIN ECRYPT UNLOCK DATA/);
+  assert.match(appSource, /Copy unlockable text/);
+  assert.match(appSource, /handleWalletAction/);
+  assert.match(appSource, /network-picker/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));
 });
