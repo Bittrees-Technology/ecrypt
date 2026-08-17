@@ -291,6 +291,7 @@ test("an any-ID ERC-1155 policy falls back to live transfer logs", async () => {
 test("starter-only assets are gone", async () => {
   const packageJson = await readFile(new URL("package.json", projectRoot), "utf8");
   const appSource = await readFile(new URL("app/EcryptApp.tsx", projectRoot), "utf8");
+  const stylesheet = await readFile(new URL("app/globals.css", projectRoot), "utf8");
   assert.doesNotMatch(packageJson, /react-loading-skeleton|site-creator-vinext-starter/);
   assert.match(appSource, /\[sha256:\$\{segment\.hash\}\]/);
   assert.match(appSource, /BEGIN ECRYPT UNLOCK DATA/);
@@ -312,5 +313,6 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /explorerAddressUrl/);
   assert.match(appSource, /explorer-address/);
   assert.match(appSource, /\/address\/\$\{address\}/);
+  assert.match(stylesheet, /grid-template-columns: minmax\(0, 2fr\) minmax\(330px, 1fr\)/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));
 });

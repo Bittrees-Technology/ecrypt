@@ -345,7 +345,7 @@ main {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(330px, 0.7fr);
+  grid-template-columns: minmax(0, 2fr) minmax(330px, 1fr);
 }
 
 .workspace-main,
