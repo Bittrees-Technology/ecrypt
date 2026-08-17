@@ -27,7 +27,10 @@ async function ethCall(network: NetworkKey, to: string, data: string): Promise<s
   try {
     const response = await fetch(rpcUrl(network), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        origin: "https://ecrypt.bittrees.org",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
