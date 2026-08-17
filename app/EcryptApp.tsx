@@ -48,6 +48,26 @@ declare global {
 type Mode = "compose" | "open";
 type Notice = { tone: "error" | "success" | "info"; text: string } | null;
 
+const ADDABLE_WALLET_NETWORKS: Partial<Record<NetworkKey, {
+  chainName: string;
+  rpcUrls: string[];
+  nativeCurrency: { name: string; symbol: string; decimals: number };
+  blockExplorerUrls: string[];
+}>> = {
+  base: {
+    chainName: "Base Mainnet",
+    rpcUrls: ["https://mainnet.base.org"],
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    blockExplorerUrls: ["https://basescan.org"],
+  },
+  robinhood: {
+    chainName: "Robinhood Chain",
+    rpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    blockExplorerUrls: ["https://robinhoodchain.blockscout.com"],
+  },
+};
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const ECRYPT_DATA_BEGIN = "-----BEGIN ECRYPT UNLOCK DATA-----";
@@ -92,6 +112,14 @@ function asArrayBuffer(value: Uint8Array): ArrayBuffer {
 
 function textToHex(value: string): `0x${string}` {
   return `0x${Array.from(encoder.encode(value), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function providerErrorCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const direct = (error as { code?: unknown }).code;
+  if (typeof direct === "number") return direct;
+  const nested = (error as { data?: { originalError?: { code?: unknown } } }).data?.originalError?.code;
+  return typeof nested === "number" ? nested : undefined;
 }
 
 function markedSegments(value: string) {
@@ -496,6 +524,61 @@ export default function EcryptApp() {
     setRules((current) => current.map((rule) => (rule.id === id ? { ...rule, ...update } : rule)));
   }
 
+  async function selectRuleNetwork(id: string, networkKey: NetworkKey) {
+    updateRule(id, { network: networkKey });
+    const network = NETWORKS[networkKey];
+    if (!wallet) {
+      setNotice({ tone: "info", text: `${network.label} selected. Connect a wallet when you are ready to create the document.` });
+      return;
+    }
+    if (!window.ethereum) {
+      setNotice({ tone: "error", text: `${network.label} was selected, but the connected wallet could not be reached.` });
+      return;
+    }
+
+    const chainId = `0x${network.chainId.toString(16)}`;
+    try {
+      await window.ethereum.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId }],
+      });
+      setNotice({ tone: "success", text: `Wallet switched to ${network.label}.` });
+    } catch (switchError) {
+      const addableNetwork = ADDABLE_WALLET_NETWORKS[networkKey];
+      if (providerErrorCode(switchError) === 4902 && addableNetwork) {
+        try {
+          await window.ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [{ chainId, ...addableNetwork }],
+          });
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId }],
+          });
+          setNotice({ tone: "success", text: `${network.label} was added and selected in your wallet.` });
+          return;
+        } catch (addError) {
+          const rejected = providerErrorCode(addError) === 4001 || (addError instanceof Error && /reject|denied|cancel/i.test(addError.message));
+          setNotice({
+            tone: rejected ? "info" : "error",
+            text: rejected
+              ? `${network.label} is selected for this condition, but the wallet network change was canceled.`
+              : `${network.label} is selected for this condition, but the wallet could not add or switch to it.`,
+          });
+          return;
+        }
+      }
+
+      const rejected = providerErrorCode(switchError) === 4001 || (switchError instanceof Error && /reject|denied|cancel/i.test(switchError.message));
+      setNotice({
+        tone: rejected ? "info" : "error",
+        text: rejected
+          ? `${network.label} is selected for this condition, but the wallet network change was canceled.`
+          : `${network.label} is selected for this condition, but this wallet could not switch networks automatically.`,
+      });
+    }
+  }
+
   function changeRuleKind(id: string, kind: RuleKind) {
     setRules((current) =>
       current.map((rule) => {
@@ -816,7 +899,7 @@ export default function EcryptApp() {
                   </div>
                   <Network size={20} aria-hidden="true" />
                 </div>
-                <p className="policy-intro">Choose where each token is checked. Your wallet can stay on its current network while signing. The wallet that creates the document can always decrypt it.</p>
+                <p className="policy-intro">Choose where each token is checked. Selecting a network also asks a connected wallet to switch; your wallet may request confirmation. The wallet that creates the document can always decrypt it.</p>
 
                 {rules.length > 1 && (
                   <div className="match-toggle" aria-label="Access condition mode">
@@ -860,7 +943,7 @@ export default function EcryptApp() {
                                 className={rule.network === key ? "active" : ""}
                                 type="button"
                                 aria-pressed={rule.network === key}
-                                onClick={() => updateRule(rule.id, { network: key })}
+                                onClick={() => void selectRuleNetwork(rule.id, key)}
                                 key={key}
                               >
                                 {network.label}
