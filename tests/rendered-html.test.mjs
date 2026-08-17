@@ -310,6 +310,12 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /readOnly value=\{unlockableText\}/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /network-picker/);
+  assert.match(appSource, /Switch connected wallet network/);
+  assert.match(appSource, /onClick=\{\(\) => void switchWalletNetwork\(key\)\}/);
+  assert.match(appSource, /aria-pressed=\{walletNetwork === key\}/);
+  assert.match(appSource, /await switchWalletNetwork\(networkKey, true\)/);
+  assert.match(appSource, /method: "eth_chainId"/);
+  assert.match(appSource, /provider\.on\?\.\("chainChanged"/);
   assert.match(appSource, /wallet_switchEthereumChain/);
   assert.match(appSource, /wallet_addEthereumChain/);
   assert.match(appSource, /rpc\.mainnet\.chain\.robinhood\.com/);
