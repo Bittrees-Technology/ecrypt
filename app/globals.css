@@ -552,6 +552,30 @@ main {
   color: var(--green);
 }
 
+.explorer-address {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+  gap: 5px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.explorer-address svg {
+  color: var(--green);
+  flex: 0 0 auto;
+}
+
+.explorer-address:hover code {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.explorer-address:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+
 .empty-copy {
   color: var(--muted);
   font-style: italic;

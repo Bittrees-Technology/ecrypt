@@ -298,5 +298,8 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /readOnly value=\{unlockableText\}/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /network-picker/);
+  assert.match(appSource, /explorerAddressUrl/);
+  assert.match(appSource, /explorer-address/);
+  assert.match(appSource, /\/address\/\$\{address\}/);
   await assert.rejects(access(new URL("app/_sites-preview", projectRoot)));
 });

@@ -7,6 +7,7 @@ import {
   Copy,
   Download,
   Eye,
+  ExternalLink,
   FileLock2,
   KeyRound,
   LogOut,
@@ -281,6 +282,36 @@ function downloadPackage(documentPackage: EcryptPackage) {
   URL.revokeObjectURL(link.href);
 }
 
+function explorerAddressUrl(address: string, network: NetworkKey = "ethereum") {
+  return `${NETWORKS[network].explorer}/address/${address}`;
+}
+
+function ExplorerAddress({
+  address,
+  network = "ethereum",
+  prefix = "",
+  suffix = "",
+}: {
+  address: string;
+  network?: NetworkKey;
+  prefix?: string;
+  suffix?: string;
+}) {
+  return (
+    <a
+      className="explorer-address"
+      href={explorerAddressUrl(address, network)}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`View ${address} on the ${NETWORKS[network].label} block explorer`}
+      title={`View on ${NETWORKS[network].label} explorer`}
+    >
+      <code>{prefix}{shortAddress(address)}{suffix}</code>
+      <ExternalLink size={11} aria-hidden="true" />
+    </a>
+  );
+}
+
 function RedactedDocument({
   documentPackage,
   revealed,
@@ -312,7 +343,7 @@ function RedactedDocument({
       </div>
       <div className="paper-signature">
         <span>Protected by</span>
-        <code>{shortAddress(documentPackage.author)}</code>
+        <ExplorerAddress address={documentPackage.author} />
       </div>
     </article>
   );
@@ -893,12 +924,20 @@ export default function EcryptApp() {
                       <div><span>Policy</span><strong>{openedPackage.policy.mode === "any" ? "Any condition" : "All conditions"}</strong></div>
                       <div className="summary-rule">
                         <span className="summary-kind">CREATOR</span>
-                        <code>{shortAddress(openedPackage.author)} · always eligible</code>
+                        <ExplorerAddress address={openedPackage.author} suffix=" · always eligible" />
                       </div>
                       {openedPackage.policy.rules.map((rule) => (
                         <div className="summary-rule" key={rule.id}>
                           <span className="summary-kind">{rule.kind.toUpperCase()}</span>
-                          <code>{rule.kind === "wallet" ? shortAddress(rule.address!) : `${NETWORKS[rule.network!].label} · ${shortAddress(rule.contract!)}`}</code>
+                          {rule.kind === "wallet" ? (
+                            <ExplorerAddress address={rule.address!} />
+                          ) : (
+                            <ExplorerAddress
+                              address={rule.contract!}
+                              network={rule.network!}
+                              prefix={`${NETWORKS[rule.network!].label} · `}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
