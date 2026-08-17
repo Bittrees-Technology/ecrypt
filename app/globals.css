@@ -824,9 +824,9 @@ main {
 }
 
 .output-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .copy-hash-button {
@@ -851,8 +851,43 @@ main {
 
 .sealed-result .output-note {
   font-size: 10px;
-  margin-top: 10px;
-  max-width: 760px;
+  margin-top: 14px;
+  max-width: 900px;
+}
+
+.copy-options-footer {
+  border: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.copy-options-footer p {
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 13px 14px;
+}
+
+.copy-options-footer p + p {
+  border-left: 1px solid var(--line);
+}
+
+.copy-options-footer strong,
+.copy-options-footer span {
+  display: block;
+}
+
+.copy-options-footer strong {
+  color: var(--ink);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.copy-options-footer span {
+  color: var(--muted);
 }
 
 .package-options {
@@ -1161,6 +1196,16 @@ footer a {
     align-items: stretch;
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .output-actions,
+  .copy-options-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .copy-options-footer p + p {
+    border-left: 0;
+    border-top: 1px solid var(--line);
   }
 
   .mode-switch button {

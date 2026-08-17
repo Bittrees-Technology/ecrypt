@@ -119,8 +119,12 @@ function redactedPackageText(documentPackage: EcryptPackage): string {
     .join("");
 }
 
+function unlockDataPackageText(documentPackage: EcryptPackage): string {
+  return `${ECRYPT_DATA_BEGIN}\n${encodedPackage(documentPackage)}\n${ECRYPT_DATA_END}`;
+}
+
 function unlockablePackageText(documentPackage: EcryptPackage): string {
-  return `${redactedPackageText(documentPackage)}\n\n${ECRYPT_DATA_BEGIN}\n${encodedPackage(documentPackage)}\n${ECRYPT_DATA_END}`;
+  return `${redactedPackageText(documentPackage)}\n\n${unlockDataPackageText(documentPackage)}`;
 }
 
 function isEcryptPackage(value: unknown): value is EcryptPackage {
@@ -167,7 +171,7 @@ function decodePackage(input: string): EcryptPackage {
   } else if (trimmed.includes("#ecrypt=")) {
     serialized = trimmed.split("#ecrypt=")[1];
   } else if (trimmed.includes("[sha256:")) {
-    throw new Error("This is hash-only text. Ask the sender to use “Copy unlockable text” so the encrypted passages travel with it.");
+    throw new Error("This is only the redacted message. Ask the sender to use “Copy all” or “Copy unlock hash only” so the encrypted passages travel with it.");
   }
   if (!serialized.startsWith("{")) {
     serialized = decoder.decode(base64UrlToBytes(serialized));
@@ -393,7 +397,7 @@ export default function EcryptApp() {
   const [openedPackage, setOpenedPackage] = useState<EcryptPackage | null>(null);
   const [packageInput, setPackageInput] = useState("");
   const [revealed, setRevealed] = useState<Record<number, string>>({});
-  const [copied, setCopied] = useState<"unlockable" | "hashes" | "link" | null>(null);
+  const [copied, setCopied] = useState<"all" | "redacted" | "unlock" | "link" | null>(null);
 
   const shareUrl = useMemo(() => {
     if (!sealedPackage || typeof window === "undefined") return "";
@@ -406,6 +410,10 @@ export default function EcryptApp() {
 
   const unlockableText = useMemo(() => {
     return sealedPackage ? unlockablePackageText(sealedPackage) : "";
+  }, [sealedPackage]);
+
+  const unlockDataText = useMemo(() => {
+    return sealedPackage ? unlockDataPackageText(sealedPackage) : "";
   }, [sealedPackage]);
 
   useEffect(() => {
@@ -569,7 +577,7 @@ export default function EcryptApp() {
       };
       setSealedPackage(documentPackage);
       setRevealed({});
-      setNotice({ tone: "success", text: "Redacted text is ready. Copy the unlockable version to decrypt it later, or use hash-only text for public documents." });
+      setNotice({ tone: "success", text: "Redacted text is ready. Use Copy all for a self-contained message, or choose one of the separate formats below." });
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The document could not be sealed." });
     } finally {
@@ -590,20 +598,30 @@ export default function EcryptApp() {
   async function copyRedactedText() {
     try {
       await navigator.clipboard.writeText(redactedText);
-      setCopied("hashes");
-      window.setTimeout(() => setCopied((current) => (current === "hashes" ? null : current)), 1800);
+      setCopied("redacted");
+      window.setTimeout(() => setCopied((current) => (current === "redacted" ? null : current)), 1800);
     } catch {
       setNotice({ tone: "error", text: "The redacted text could not be copied automatically. You can select it manually." });
     }
   }
 
-  async function copyUnlockableText() {
+  async function copyAllText() {
     try {
       await navigator.clipboard.writeText(unlockableText);
-      setCopied("unlockable");
-      window.setTimeout(() => setCopied((current) => (current === "unlockable" ? null : current)), 1800);
+      setCopied("all");
+      window.setTimeout(() => setCopied((current) => (current === "all" ? null : current)), 1800);
     } catch {
-      setNotice({ tone: "error", text: "The unlockable text could not be copied automatically. You can select the private share link instead." });
+      setNotice({ tone: "error", text: "The complete text could not be copied automatically. Select everything in the output box instead." });
+    }
+  }
+
+  async function copyUnlockDataText() {
+    try {
+      await navigator.clipboard.writeText(unlockDataText);
+      setCopied("unlock");
+      window.setTimeout(() => setCopied((current) => (current === "unlock" ? null : current)), 1800);
+    } catch {
+      setNotice({ tone: "error", text: "The unlock-data block could not be copied automatically. Use Copy all or download the package instead." });
     }
   }
 
@@ -867,23 +885,32 @@ export default function EcryptApp() {
                     <span className="eyebrow">Redacted text / ready to paste</span>
                     <h2>Original text, inline hashes.</h2>
                     <p>Every public character stays in place. Each protected passage is replaced with its full salted SHA-256 hash.</p>
-                    <label className="field-label" htmlFor="redacted-output">Unlockable redacted text — select all and copy</label>
+                    <label className="field-label" htmlFor="redacted-output">Complete output — select all and copy</label>
                     <textarea id="redacted-output" className="redacted-output" readOnly value={unlockableText} spellCheck={false} />
                     <div className="output-actions">
-                      <button className="copy-output-button" type="button" onClick={copyUnlockableText}>
-                        {copied === "unlockable" ? <Check size={16} /> : <Copy size={16} />}
-                        {copied === "unlockable" ? "Copied unlockable text" : "Copy unlockable text"}
+                      <button className="copy-output-button" type="button" onClick={copyAllText}>
+                        {copied === "all" ? <Check size={16} /> : <Copy size={16} />}
+                        {copied === "all" ? "Copied all" : "Copy all"}
                       </button>
                       <button className="copy-hash-button" type="button" onClick={copyRedactedText}>
-                        {copied === "hashes" ? <Check size={16} /> : <Copy size={16} />}
-                        {copied === "hashes" ? "Copied hash-only text" : "Copy hash-only text"}
+                        {copied === "redacted" ? <Check size={16} /> : <Copy size={16} />}
+                        {copied === "redacted" ? "Copied redacted message" : "Copy redacted message only"}
+                      </button>
+                      <button className="copy-hash-button" type="button" onClick={copyUnlockDataText}>
+                        {copied === "unlock" ? <Check size={16} /> : <Copy size={16} />}
+                        {copied === "unlock" ? "Copied unlock hash" : "Copy unlock hash only"}
                       </button>
                     </div>
-                    <p className="output-note">Manual copy works too: select everything in the box, then copy and paste it through another app. Keep the encrypted unlock-data footer intact. “Hash-only” is cleaner for public documents but cannot be decrypted.</p>
+                    <div className="copy-options-footer" aria-label="Copy option guide">
+                      <p><strong>Copy all</strong><span>The complete redacted message plus its unlock-data block. Best for sending one self-contained copy.</span></p>
+                      <p><strong>Redacted message only</strong><span>Readable public text with inline SHA-256 redactions. It cannot be decrypted by itself.</span></p>
+                      <p><strong>Unlock hash only</strong><span>The compact encrypted package. Paste it into eCrypt and satisfy the wallet policy to reveal the message.</span></p>
+                    </div>
+                    <p className="output-note"><strong>Recovery:</strong> eCrypt does not currently store wallet history. Keep Copy all, the unlock hash, a share link, or the downloaded package. An opt-in wallet recovery vault can be added separately.</p>
 
                     <details className="package-options">
-                      <summary>Keep an unlockable token-gated version</summary>
-                      <p>The copyable text above is a public proof and cannot be decrypted by itself. Use this share link or package when an eligible wallet should be able to reveal the original passages.</p>
+                      <summary>More ways to keep the unlockable version</summary>
+                      <p>The complete output above, this share link, and the downloaded package all contain the encrypted passages and access policy. The redacted-message-only format does not.</p>
                       <label className="field-label" htmlFor="share-url">Private share link</label>
                       <div className="share-field">
                         <input id="share-url" readOnly value={shareUrl} />
@@ -902,7 +929,7 @@ export default function EcryptApp() {
                   <div className="open-icon"><Upload size={26} /></div>
                   <span className="eyebrow">Copy / paste unlock</span>
                   <h2>Paste redacted text to decrypt</h2>
-                  <p>Paste text created with “Copy unlockable text.” eCrypt detects its private footer automatically. Share links and <code>.ecrypt.json</code> packages still work too.</p>
+                  <p>Paste text created with “Copy all” or “Copy unlock hash only.” eCrypt detects the unlock-data block automatically. Share links and <code>.ecrypt.json</code> packages still work too.</p>
                   <textarea value={packageInput} onChange={(event) => setPackageInput(event.target.value)} onPaste={handlePackagePaste} placeholder={`Public text [sha256:…]\n\n${ECRYPT_DATA_BEGIN}\n…`} aria-label="Unlockable redacted text" />
                   <button className="seal-button open-button" type="button" onClick={loadPackage} disabled={!packageInput.trim()}><FileLock2 size={18} /> Open pasted text <ArrowRight size={18} /></button>
                 </div>

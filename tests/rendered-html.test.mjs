@@ -294,7 +294,10 @@ test("starter-only assets are gone", async () => {
   assert.doesNotMatch(packageJson, /react-loading-skeleton|site-creator-vinext-starter/);
   assert.match(appSource, /\[sha256:\$\{segment\.hash\}\]/);
   assert.match(appSource, /BEGIN ECRYPT UNLOCK DATA/);
-  assert.match(appSource, /Copy unlockable text/);
+  assert.match(appSource, /Copy all/);
+  assert.match(appSource, /Copy redacted message only/);
+  assert.match(appSource, /Copy unlock hash only/);
+  assert.match(appSource, /unlockDataPackageText/);
   assert.match(appSource, /readOnly value=\{unlockableText\}/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /network-picker/);
