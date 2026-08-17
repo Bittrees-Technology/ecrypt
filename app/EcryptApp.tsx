@@ -37,6 +37,8 @@ import {
 
 interface EthereumProvider {
   request<T = unknown>(request: { method: string; params?: unknown[] }): Promise<T>;
+  on?(event: "chainChanged", listener: (chainId: unknown) => void): void;
+  removeListener?(event: "chainChanged", listener: (chainId: unknown) => void): void;
 }
 
 declare global {
@@ -115,6 +117,18 @@ function providerErrorCode(error: unknown): number | undefined {
   if (typeof direct === "number") return direct;
   const nested = (error as { data?: { originalError?: { code?: unknown } } }).data?.originalError?.code;
   return typeof nested === "number" ? nested : undefined;
+}
+
+function networkKeyFromChainId(value: unknown): NetworkKey | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const chainId = typeof value === "number"
+    ? value
+    : value.toLowerCase().startsWith("0x")
+      ? Number.parseInt(value, 16)
+      : Number.parseInt(value, 10);
+  const match = (Object.entries(NETWORKS) as [NetworkKey, (typeof NETWORKS)[NetworkKey]][])
+    .find(([, network]) => network.chainId === chainId);
+  return match?.[0] ?? null;
 }
 
 function markedSegments(value: string) {
@@ -410,6 +424,7 @@ export default function EcryptApp() {
   const packageFileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<Mode>("compose");
   const [wallet, setWallet] = useState("");
+  const [walletNetwork, setWalletNetwork] = useState<NetworkKey | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [matchMode, setMatchMode] = useState<MatchMode>("any");
@@ -459,6 +474,21 @@ export default function EcryptApp() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const provider = window.ethereum;
+    if (!wallet || !provider) return;
+
+    const handleChainChanged = (chainId: unknown) => {
+      setWalletNetwork(networkKeyFromChainId(chainId));
+    };
+
+    void provider.request<string>({ method: "eth_chainId" })
+      .then(handleChainChanged)
+      .catch(() => setWalletNetwork(null));
+    provider.on?.("chainChanged", handleChainChanged);
+    return () => provider.removeListener?.("chainChanged", handleChainChanged);
+  }, [wallet]);
+
   async function ensureWallet() {
     if (wallet) return wallet;
     const address = await connectWallet();
@@ -488,6 +518,7 @@ export default function EcryptApp() {
       return;
     }
     setWallet("");
+    setWalletNetwork(null);
     setRevealed({});
     setNotice({ tone: "info", text: "Wallet disconnected from eCrypt and revealed text was hidden. Your wallet app may still list this site as approved." });
   }
@@ -519,16 +550,20 @@ export default function EcryptApp() {
     setRules((current) => current.map((rule) => (rule.id === id ? { ...rule, ...update } : rule)));
   }
 
-  async function selectRuleNetwork(id: string, networkKey: NetworkKey) {
-    updateRule(id, { network: networkKey });
+  async function switchWalletNetwork(networkKey: NetworkKey, selectedForCondition = false) {
     const network = NETWORKS[networkKey];
-    if (!wallet) {
-      setNotice({ tone: "info", text: `${network.label} selected. Connect a wallet when you are ready to create the document.` });
-      return;
+    try {
+      await ensureWallet();
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        text: error instanceof Error ? error.message : `Connect a wallet to switch to ${network.label}.`,
+      });
+      return false;
     }
     if (!window.ethereum) {
-      setNotice({ tone: "error", text: `${network.label} was selected, but the connected wallet could not be reached.` });
-      return;
+      setNotice({ tone: "error", text: `The connected wallet could not switch to ${network.label}.` });
+      return false;
     }
 
     const chainId = `0x${network.chainId.toString(16)}`;
@@ -537,7 +572,9 @@ export default function EcryptApp() {
         method: "wallet_switchEthereumChain",
         params: [{ chainId }],
       });
+      setWalletNetwork(networkKey);
       setNotice({ tone: "success", text: `Wallet switched to ${network.label}.` });
+      return true;
     } catch (switchError) {
       const addableNetwork = ADDABLE_WALLET_NETWORKS[networkKey];
       if (providerErrorCode(switchError) === 4902 && addableNetwork) {
@@ -550,17 +587,18 @@ export default function EcryptApp() {
             method: "wallet_switchEthereumChain",
             params: [{ chainId }],
           });
+          setWalletNetwork(networkKey);
           setNotice({ tone: "success", text: `${network.label} was added and selected in your wallet.` });
-          return;
+          return true;
         } catch (addError) {
           const rejected = providerErrorCode(addError) === 4001 || (addError instanceof Error && /reject|denied|cancel/i.test(addError.message));
           setNotice({
             tone: rejected ? "info" : "error",
             text: rejected
-              ? `${network.label} is selected for this condition, but the wallet network change was canceled.`
-              : `${network.label} is selected for this condition, but the wallet could not add or switch to it.`,
+              ? `${selectedForCondition ? `${network.label} is selected for this condition, but ` : ""}the wallet network change was canceled.`
+              : `${selectedForCondition ? `${network.label} is selected for this condition, but ` : ""}the wallet could not add or switch to ${network.label}.`,
           });
-          return;
+          return false;
         }
       }
 
@@ -568,10 +606,16 @@ export default function EcryptApp() {
       setNotice({
         tone: rejected ? "info" : "error",
         text: rejected
-          ? `${network.label} is selected for this condition, but the wallet network change was canceled.`
-          : `${network.label} is selected for this condition, but this wallet could not switch networks automatically.`,
+          ? `${selectedForCondition ? `${network.label} is selected for this condition, but ` : ""}the wallet network change was canceled.`
+          : `${selectedForCondition ? `${network.label} is selected for this condition, but ` : ""}this wallet could not switch to ${network.label} automatically.`,
       });
+      return false;
     }
+  }
+
+  async function selectRuleNetwork(id: string, networkKey: NetworkKey) {
+    updateRule(id, { network: networkKey });
+    await switchWalletNetwork(networkKey, true);
   }
 
   function changeRuleKind(id: string, kind: RuleKind) {
@@ -812,11 +856,19 @@ export default function EcryptApp() {
           <p className="hero-copy">
             Seal sensitive passages inside an otherwise readable document. A wallet signature and live onchain access policy decide who can reveal them.
           </p>
-          <div className="network-strip" aria-label="Supported networks">
+          <div className="network-strip" aria-label="Switch connected wallet network">
             {(Object.entries(NETWORKS) as [NetworkKey, (typeof NETWORKS)[NetworkKey]][]).map(([key, network], index) => (
-              <div className={`network-chip network-${key}`} key={key}>
+              <button
+                className={`network-chip network-${key}${walletNetwork === key ? " active" : ""}`}
+                type="button"
+                aria-label={`Switch wallet to ${network.label}`}
+                aria-pressed={walletNetwork === key}
+                title={`Switch wallet to ${network.label}`}
+                onClick={() => void switchWalletNetwork(key)}
+                key={key}
+              >
                 <span>{String(index + 1).padStart(2, "0")}</span>{network.label}
-              </div>
+              </button>
             ))}
           </div>
         </section>

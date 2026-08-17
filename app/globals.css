@@ -233,12 +233,26 @@ main {
   align-items: center;
   background: rgba(251, 250, 246, 0.75);
   border: 1px solid var(--line);
+  color: var(--ink);
   display: flex;
   font-size: 12px;
   font-weight: 650;
   gap: 10px;
   min-height: 35px;
   padding: 0 12px 0 7px;
+  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  white-space: nowrap;
+}
+
+.network-chip:hover {
+  background: var(--surface);
+  border-color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.network-chip.active {
+  border-color: var(--green);
+  box-shadow: inset 0 -3px var(--green);
 }
 
 .network-chip span {
