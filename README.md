@@ -4,6 +4,8 @@ eCrypt creates portable documents with public text and encrypted inline redactio
 
 The primary result is copyable plain text: the original public text remains unchanged while every protected passage is replaced inline with its full salted `sha256:…` hash. “Copy all” includes that redacted message and its encrypted unlock-data block; “Copy redacted message only” creates a public document that cannot be decrypted by itself; and “Copy unlock hash only” copies the compact encrypted package without the readable duplicate. Share links and `.ecrypt.json` packages remain available too.
 
+Document titles are optional. Decryption defaults to copy/paste and also accepts downloaded `.ecrypt.json` packages. eCrypt keeps no document history: if every copy containing the unlock data is lost, the protected passages cannot be recovered from their SHA-256 hashes.
+
 Supported access conditions:
 
 - a specific wallet address

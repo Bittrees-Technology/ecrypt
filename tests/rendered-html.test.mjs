@@ -298,6 +298,11 @@ test("starter-only assets are gone", async () => {
   assert.match(appSource, /Copy redacted message only/);
   assert.match(appSource, /Copy unlock hash only/);
   assert.match(appSource, /unlockDataPackageText/);
+  assert.match(appSource, /No history or recovery/);
+  assert.match(appSource, /Upload \.ecrypt\.json/);
+  assert.match(appSource, /handlePackageFile/);
+  assert.match(appSource, /Document title <span>\(optional\)<\/span>/);
+  assert.doesNotMatch(appSource, /Give the document a title before sealing it/);
   assert.match(appSource, /readOnly value=\{unlockableText\}/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /network-picker/);

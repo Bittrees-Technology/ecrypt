@@ -15,11 +15,12 @@ import {
   Network,
   Plus,
   ShieldCheck,
+  TriangleAlert,
   Trash2,
   Upload,
   Wallet,
 } from "lucide-react";
-import { type ClipboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type ClipboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessPolicy,
   AccessRule,
@@ -383,9 +384,10 @@ function DraftPreview({ value, title }: { value: string; title: string }) {
 
 export default function EcryptApp() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const packageFileRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<Mode>("compose");
   const [wallet, setWallet] = useState("");
-  const [title, setTitle] = useState("Treasury authorization — Q3");
+  const [title, setTitle] = useState("");
   const [body, setBody] = useState(SAMPLE_DOCUMENT);
   const [matchMode, setMatchMode] = useState<MatchMode>("any");
   const [rules, setRules] = useState<AccessRule[]>([
@@ -522,10 +524,6 @@ export default function EcryptApp() {
   async function sealDocument() {
     setNotice(null);
     const marked = markedSegments(body);
-    if (!title.trim()) {
-      setNotice({ tone: "error", text: "Give the document a title before sealing it." });
-      return;
-    }
     if (!marked.some((segment) => segment.kind === "secret")) {
       setNotice({ tone: "error", text: "Mark at least one passage for encryption." });
       return;
@@ -568,7 +566,7 @@ export default function EcryptApp() {
       const documentPackage: EcryptPackage = {
         version: 1,
         id: randomId("doc"),
-        title: title.trim().slice(0, 160),
+        title: title.trim().slice(0, 160) || "Untitled encrypted message",
         author: wrapped.author,
         createdAt: new Date().toISOString(),
         policy: wrapped.policy,
@@ -649,6 +647,24 @@ export default function EcryptApp() {
       openPackageText(pasted);
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The pasted text could not be opened." });
+    }
+  }
+
+  async function handlePackageFile(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > 2_000_000) {
+        throw new Error("This eCrypt package is too large to open safely.");
+      }
+      const contents = await file.text();
+      setPackageInput(contents);
+      openPackageText(contents);
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "The selected package could not be opened." });
+    } finally {
+      input.value = "";
     }
   }
 
@@ -769,13 +785,14 @@ export default function EcryptApp() {
                     <Eye size={15} /> Redact selection
                   </button>
                 </div>
-                <label className="field-label" htmlFor="document-title">Document title</label>
+                <label className="field-label" htmlFor="document-title">Document title <span>(optional)</span></label>
                 <input
                   id="document-title"
                   className="title-input"
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   maxLength={160}
+                  placeholder="Untitled encrypted message"
                 />
                 <label className="field-label editor-label" htmlFor="document-body">
                   Body <span>Select text and use “Redact selection,” or wrap it in [[double brackets]].</span>
@@ -906,7 +923,10 @@ export default function EcryptApp() {
                       <p><strong>Redacted message only</strong><span>Readable public text with inline SHA-256 redactions. It cannot be decrypted by itself.</span></p>
                       <p><strong>Unlock hash only</strong><span>The compact encrypted package. Paste it into eCrypt and satisfy the wallet policy to reveal the message.</span></p>
                     </div>
-                    <p className="output-note"><strong>Recovery:</strong> eCrypt does not currently store wallet history. Keep Copy all, the unlock hash, a share link, or the downloaded package. An opt-in wallet recovery vault can be added separately.</p>
+                    <div className="recovery-warning" role="note">
+                      <TriangleAlert size={20} aria-hidden="true" />
+                      <p><strong>No history or recovery</strong><span>eCrypt does not store your documents. If every copy of the unlock data is lost—including Copy all, the unlock hash, share link, and downloaded package—recovery is impossible, even for eCrypt.</span></p>
+                    </div>
 
                     <details className="package-options">
                       <summary>More ways to keep the unlockable version</summary>
@@ -932,6 +952,19 @@ export default function EcryptApp() {
                   <p>Paste text created with “Copy all” or “Copy unlock hash only.” eCrypt detects the unlock-data block automatically. Share links and <code>.ecrypt.json</code> packages still work too.</p>
                   <textarea value={packageInput} onChange={(event) => setPackageInput(event.target.value)} onPaste={handlePackagePaste} placeholder={`Public text [sha256:…]\n\n${ECRYPT_DATA_BEGIN}\n…`} aria-label="Unlockable redacted text" />
                   <button className="seal-button open-button" type="button" onClick={loadPackage} disabled={!packageInput.trim()}><FileLock2 size={18} /> Open pasted text <ArrowRight size={18} /></button>
+                  <div className="upload-package-option">
+                    <span>Or use a saved package</span>
+                    <input
+                      ref={packageFileRef}
+                      type="file"
+                      accept=".json,application/json,application/ecrypt+json"
+                      onChange={handlePackageFile}
+                      hidden
+                    />
+                    <button className="download-button upload-json-button" type="button" onClick={() => packageFileRef.current?.click()}>
+                      <Upload size={16} /> Upload .ecrypt.json
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <div className="unlock-grid">
