@@ -447,6 +447,8 @@ test("the established copy, JSON, wallet, preview, and About flows remain presen
   assert.match(appSource, /No account history or recovery/);
   assert.match(appSource, /Create short link/);
   assert.match(appSource, /Delete hosted message/);
+  assert.match(appSource, /openedShareId && creatorWalletConnected/);
+  assert.match(appSource, /accountsChanged/);
   assert.match(appSource, /#share=/);
   assert.match(appSource, /Upload \.ecrypt\.json/);
   assert.match(appSource, /Document title <span>\(optional\)<\/span>/);
