@@ -696,11 +696,11 @@ function AboutPanel() {
     >
       <header className="about-intro">
         <div>
-          <span className="eyebrow">Protocol / explained</span>
+          <span className="eyebrow">Protocol / current build</span>
           <h2>A readable document with encrypted holes.</h2>
         </div>
         <p>
-          eCrypt leaves ordinary text readable and encrypts only the passages you mark. The result can travel through email, chat, a document, a share link, or a saved package. A qualifying wallet can reveal the protected passages later without writing a transaction to a blockchain.
+          eCrypt leaves ordinary text readable and encrypts only the passages you mark. The result can travel through email, chat, a document, a share link, or a saved package. The creator wallet or a wallet that satisfies the signed access policy can reveal the protected passages later without writing a transaction to a blockchain.
         </p>
         <div className="about-facts" aria-label="eCrypt at a glance">
           <div><strong>03</strong><span>supported networks</span></div>
@@ -728,12 +728,12 @@ function AboutPanel() {
           <article>
             <span>03 / Carry</span>
             <h4>Keep the complete package</h4>
-            <p>The portable version-2 data carries the signed public text and metadata, ciphertext, commitments, creator proof, access policy, and a versioned protected key. It can be copied, downloaded, placed in a self-contained link, or stored by opt-in as a short link.</p>
+            <p>The portable version-2 package carries the signed public text and metadata, ciphertext, commitments, creator proof, access policy, and a versioned protected key. Copy all, unlock data, JSON, and either link type carry this package; redacted-message-only text does not.</p>
           </article>
           <article>
             <span>04 / Reveal</span>
             <h4>Prove access, then decrypt</h4>
-            <p>The reader signs a five-minute authorization bound to this exact package. Its nonce is accepted once; eCrypt checks access, returns the key when eligible, and the browser verifies every passage.</p>
+            <p>The connected wallet signs a five-minute authorization bound to this exact package. Its nonce is accepted once; eCrypt recognizes the creator or checks the live policy, returns the key when authorized, and the browser verifies every passage.</p>
           </article>
         </div>
       </section>
@@ -745,7 +745,7 @@ function AboutPanel() {
           <dl className="about-definition-list">
             <div><dt>AES-256-GCM</dt><dd>Encrypts each private passage and detects ciphertext tampering. This is what provides confidentiality.</dd></div>
             <div><dt>Nonce-protected SHA-256</dt><dd>Creates the public inline commitment. Its random verification nonce stays inside the ciphertext, preventing package holders from testing predictable guesses offline.</dd></div>
-            <div><dt>Wallet signatures</dt><dd>The creator signs the complete document digest. Reveal and hosted-copy deletion signatures expire, name the exact target, and cannot be replayed after use.</dd></div>
+            <div><dt>Wallet signatures</dt><dd>The creator signature remains the package’s authenticity proof. Separate reveal and hosted-copy deletion authorizations last five minutes, name the exact target, and cannot be replayed after use.</dd></div>
             <div><dt>Authenticated key wrapping</dt><dd>Binds the protected document key to the signed document, policy, creator, and key commitment under an identified wrapping-key version.</dd></div>
             <div><dt>Live chain reads</dt><dd>Check the wallet’s current token or NFT eligibility on Ethereum, Base, or Robinhood when the reader asks to reveal.</dd></div>
           </dl>
@@ -759,9 +759,9 @@ function AboutPanel() {
             <li><strong>Specific wallet</strong><span>One named EVM address.</span></li>
             <li><strong>ERC-20</strong><span>A minimum token balance.</span></li>
             <li><strong>ERC-721</strong><span>Any NFT from a contract, or one optional token ID.</span></li>
-            <li><strong>ERC-1155</strong><span>One optional token ID or any ID from a contract, with a minimum balance.</span></li>
+            <li><strong>ERC-1155</strong><span>One optional token ID or any single qualifying ID from a contract. The whole-number minimum is checked per ID, not summed across IDs.</span></li>
           </ul>
-          <div className="about-callout"><Wallet size={17} aria-hidden="true" /><p><strong>Creator access is built in.</strong> The wallet that creates the package can decrypt it without satisfying the reader policy, provided the complete package and eCrypt service remain available.</p></div>
+          <div className="about-callout"><Wallet size={17} aria-hidden="true" /><p><strong>Creator access is built in.</strong> The wallet that creates the package can decrypt it without satisfying the reader policy. On a hosted link, creator-deletion controls appear only while that creator wallet is connected.</p></div>
         </section>
       </div>
 
@@ -771,10 +771,10 @@ function AboutPanel() {
           <h3 id="about-formats-title">What to copy or save</h3>
         </div>
         <div className="about-format-grid">
-          <article><span>Recommended</span><h4>Copy all</h4><p>The readable redacted message and complete unlock-data block together. Paste the entire copy into eCrypt.</p></article>
-          <article><span>Public display</span><h4>Redacted message only</h4><p>Public text and inline SHA-256 fingerprints. It is easy to share, but cannot be decrypted by itself.</p></article>
-          <article><span>Compact carrier</span><h4>Unlock data only</h4><p>Despite the button’s “unlock hash” label, this is the complete encrypted package—not merely a hash. It is enough to begin an authorized reveal.</p></article>
-          <article><span>Files and links</span><h4>JSON, full link, or short link</h4><p>The JSON file and full link remain user-held. An opt-in short link privately stores the signed encrypted package without an automatic expiration, and the creator wallet can delete it.</p></article>
+          <article><span>Recommended</span><h4>Copy all</h4><p>The readable redacted message and complete unlock-data block together. Manual copy and paste works across applications when the full block stays intact.</p></article>
+          <article><span>Public display</span><h4>Redacted message only</h4><p>Public text and inline SHA-256 commitments. It is easy to share, but contains no ciphertext or protected key and cannot be decrypted by itself.</p></article>
+          <article><span>Compact carrier</span><h4>Unlock data only</h4><p>Despite the button’s “unlock hash” label, this is the complete encoded encrypted package—not merely a hash. It is enough to begin an authorized reveal.</p></article>
+          <article><span>Files and links</span><h4>JSON, full link, or short link</h4><p>JSON can be uploaded later. The full link keeps data in its URL but can be truncated by other apps. An opt-in short link stores the package with no automatic expiration until creator deletion.</p></article>
         </div>
       </section>
 
@@ -787,7 +787,7 @@ function AboutPanel() {
             <li><strong>A random document key does.</strong> eCrypt receives it over HTTPS to bind it to the creator and policy, then returns it only after an authorized reveal.</li>
             <li><strong>Policy checks disclose context.</strong> Wallet, contract, network, and balance queries are sent to eCrypt’s blockchain data provider when eligibility is checked.</li>
             <li><strong>The package is visible to its holder.</strong> It exposes signed public text, ciphertext, commitments, metadata, creator, and policy—but not redacted text or commitment nonces.</li>
-            <li><strong>Hosted short links are opt-in storage.</strong> Creating one sends that complete package to eCrypt’s private storage with no automatic expiration. Anyone with the random link can retrieve the package and attempt wallet-gated reveal until the creator deletes it.</li>
+            <li><strong>Hosted short links are opt-in persistent storage.</strong> Creating one sends that complete package to eCrypt’s private storage with no automatic expiration. Anyone with the random link can retrieve the package and attempt wallet-gated reveal until the creator deletes it.</li>
             <li><strong>Replay markers are temporary security data.</strong> eCrypt records random one-time challenge identifiers without document or wallet contents so the same authorization cannot be reused.</li>
           </ul>
         </section>
@@ -795,7 +795,7 @@ function AboutPanel() {
         <section className="about-card" aria-labelledby="about-cost-title">
           <span className="eyebrow">Networks / cost</span>
           <h3 id="about-cost-title">Gasless by default</h3>
-          <p>Creating and revealing use wallet signatures and read-only blockchain calls. eCrypt does not publish the document or its hash onchain, so the normal flow has no gas fee. Your wallet may still ask permission to connect, sign, add a network, or switch networks.</p>
+          <p>Creating, revealing, and creator deletion use wallet signatures and read-only blockchain calls. The current build does not publish the document or its hash onchain, so these flows have no gas fee. Your wallet may still ask permission to connect, sign, add a network, or switch networks.</p>
           <div className="about-network-row" aria-label="Supported networks">
             <span>Ethereum</span><span>Base</span><span>Robinhood</span>
           </div>
@@ -810,7 +810,7 @@ function AboutPanel() {
           <h3 id="about-warning-title">Encryption cannot correct an unsafe sharing decision.</h3>
           <ul>
             <li>Anyone with the complete package can attempt the unlock process, but only the creator or a currently eligible wallet should receive the key.</li>
-            <li>There is no account history or recovery vault. A hosted short link is an opt-in stored copy, not a wallet-synced archive; once it is deleted, eCrypt cannot recover it.</li>
+            <li>There is no account history or recovery vault. A hosted short link is an opt-in persistent copy, not a wallet-synced archive; it has no automatic expiration, and once it is deleted eCrypt cannot recover it.</li>
             <li>Creator deletion removes eCrypt’s hosted copy, but cannot recall packages another person already copied, downloaded, cached, or forwarded.</li>
             <li>The secret commitment nonce is encrypted with each passage, so a package holder cannot test predictable plaintext guesses against the visible SHA-256 commitment.</li>
             <li>Changing the title, public wording, metadata, policy, ciphertext, or commitments invalidates the signed document and eCrypt rejects it before reveal.</li>
@@ -828,7 +828,8 @@ function AboutPanel() {
         <div className="about-faq-list">
           <details><summary>Can someone decrypt just because they have the unlock data?</summary><p>No. The unlock data lets them begin the process. They still need the creator wallet or a wallet that currently satisfies the package’s policy.</p></details>
           <details><summary>Does eCrypt save my document or a history?</summary><p>eCrypt does not create an account history or recovery vault. It stores a complete signed encrypted package only when someone explicitly chooses Hosted short link. That copy has no automatic expiration and remains until its creator deletes it; all other formats remain user-held.</p></details>
-          <details><summary>Can the creator delete a hosted message?</summary><p>Yes. The creator wallet can sign a gasless deletion request bound to the exact document and short-link identifier. Deletion removes eCrypt’s hosted copy, but cannot erase copies already saved or forwarded elsewhere.</p></details>
+          <details><summary>Can the creator delete a hosted message?</summary><p>Yes. Open the hosted short link and connect its creator wallet. Only then does eCrypt show the Creator deletion section. Its gasless signature is bound to the exact document and short-link identifier. Deletion removes eCrypt’s hosted copy, but cannot erase copies already saved or forwarded elsewhere.</p></details>
+          <details><summary>Why do deletion controls appear or disappear?</summary><p>They are shown only when the connected account matches the signed creator address. Switching wallet accounts updates the controls immediately. Disconnecting or changing accounts also hides any revealed plaintext from the current view.</p></details>
           <details><summary>Does a reader need to pay gas?</summary><p>No. The wallet signs a message and eCrypt makes read-only ownership checks. There is no blockchain transaction in the standard create or reveal flow.</p></details>
           <details><summary>Is the visible SHA-256 value the encrypted text?</summary><p>No. It is a nonce-protected commitment. The protected text and the random nonce required to test that commitment are both inside authenticated AES ciphertext.</p></details>
           <details><summary>Can someone change the readable public wording?</summary><p>They can edit a copied string, but eCrypt recomputes the complete document digest and verifies the creator’s wallet signature. An altered package is rejected before reveal.</p></details>

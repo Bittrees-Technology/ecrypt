@@ -455,6 +455,8 @@ test("the established copy, JSON, wallet, preview, and About flows remain presen
   assert.match(appSource, /type Mode = "compose" \| "open" \| "about"/);
   assert.match(appSource, /Creator access is built in/);
   assert.match(appSource, /Gasless by default/);
+  assert.match(appSource, /Protocol \/ current build/);
+  assert.match(appSource, /Why do deletion controls appear or disappear/);
   assert.match(appSource, /Is eCrypt quantum-safe/);
   assert.match(appSource, /handleWalletAction/);
   assert.match(appSource, /wallet_switchEthereumChain/);
@@ -498,7 +500,10 @@ test("repository documentation declares version 2, MIT, and private reporting", 
   assert.match(readme, /Version 2|version 2/);
   assert.match(readme, /nonce-protected/i);
   assert.match(readme, /Hosted short link/);
-  assert.match(readme, /creator can delete/i);
+  assert.match(readme, /creator-authorized.*deletion|creator-deletion/i);
+  assert.match(readme, /Current production build/);
+  assert.match(readme, /no automatic expiration/i);
+  assert.match(readme, /deletion controls appear only/i);
   assert.match(readme, /AWS KMS/);
   assert.match(license, /^MIT License/);
   assert.match(security, /private vulnerability reporting/);
