@@ -46,7 +46,9 @@ import {
 interface EthereumProvider {
   request<T = unknown>(request: { method: string; params?: unknown[] }): Promise<T>;
   on?(event: "chainChanged", listener: (chainId: unknown) => void): void;
+  on?(event: "accountsChanged", listener: (accounts: unknown) => void): void;
   removeListener?(event: "chainChanged", listener: (chainId: unknown) => void): void;
+  removeListener?(event: "accountsChanged", listener: (accounts: unknown) => void): void;
 }
 
 declare global {
@@ -859,6 +861,9 @@ export default function EcryptApp() {
   const [copied, setCopied] = useState<"all" | "redacted" | "unlock" | "link" | "short" | null>(null);
   const [hostedShare, setHostedShare] = useState<HostedShare | null>(null);
   const [shareBusy, setShareBusy] = useState<"create" | "delete" | null>(null);
+  const creatorWalletConnected = Boolean(
+    wallet && openedPackage && wallet.toLowerCase() === openedPackage.author.toLowerCase(),
+  );
 
   const selfContainedShareUrl = useMemo(() => {
     if (!sealedPackage || typeof window === "undefined") return "";
@@ -920,12 +925,22 @@ export default function EcryptApp() {
     const handleChainChanged = (chainId: unknown) => {
       setWalletNetwork(networkKeyFromChainId(chainId));
     };
+    const handleAccountsChanged = (accounts: unknown) => {
+      const nextWallet = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : "";
+      setWallet(nextWallet);
+      setRevealed({});
+      if (!nextWallet) setWalletNetwork(null);
+    };
 
     void provider.request<string>({ method: "eth_chainId" })
       .then(handleChainChanged)
       .catch(() => setWalletNetwork(null));
     provider.on?.("chainChanged", handleChainChanged);
-    return () => provider.removeListener?.("chainChanged", handleChainChanged);
+    provider.on?.("accountsChanged", handleAccountsChanged);
+    return () => {
+      provider.removeListener?.("chainChanged", handleChainChanged);
+      provider.removeListener?.("accountsChanged", handleAccountsChanged);
+    };
   }, [wallet]);
 
   async function ensureWallet() {
@@ -1752,7 +1767,7 @@ export default function EcryptApp() {
                         <KeyRound size={18} /> {busy === "unlock" ? "Checking access…" : "Verify & reveal redactions"} {busy !== "unlock" && <ArrowRight size={18} />}
                       </button>
                     )}
-                    {openedShareId && (
+                    {openedShareId && creatorWalletConnected && (
                       <div className="creator-delete-option">
                         <strong>Creator deletion</strong>
                         <p>The creator wallet can permanently remove this hosted package. Copies already downloaded, copied, or forwarded cannot be recalled.</p>
