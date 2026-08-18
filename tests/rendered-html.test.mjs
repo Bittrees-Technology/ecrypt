@@ -272,7 +272,7 @@ test("hosted short links retrieve a signed package and the creator can permanent
   const created = await createResponse.json();
   assert.match(created.id, /^[A-Za-z0-9_-]{22}$/);
   assert.match(created.deleteToken, /^[A-Za-z0-9_-]{43}$/);
-  assert.ok(Date.parse(created.expiresAt) > Date.now());
+  assert.equal(created.expiresAt, undefined);
 
   const readResponse = await request(handler, "GET", `/api/share/${created.id}`);
   assert.equal(readResponse.status, 200, readResponse.status === 200 ? "" : await readResponse.text());

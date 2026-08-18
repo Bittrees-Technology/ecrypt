@@ -32,7 +32,7 @@ Do not include real decrypted documents, active unlock packages, wallet recovery
 - client-side encryption, decryption, integrity verification, and package parsing;
 - whole-document creator signatures, canonical digests, and package-tampering detection;
 - document-bound wallet challenges, one-time nonce consumption, and creator authorization;
-- hosted short-link creation, private retrieval, expiry, and creator-authorized deletion;
+- hosted short-link creation, private retrieval, persistent retention, and creator-authorized deletion;
 - nonce-protected inline commitments and offline-guess resistance;
 - versioned document-key wrapping, KMS encryption contexts, rotation, and unwrapping;
 - wallet, ERC-20, ERC-721, and ERC-1155 eligibility checks;
@@ -44,7 +44,7 @@ Do not include real decrypted documents, active unlock packages, wallet recovery
 
 - vulnerabilities in wallets, blockchains, token contracts, Alchemy, Vercel, or other third-party services that are not caused by eCrypt;
 - reports that only identify an outdated dependency without a working impact path;
-- loss of unlock data after every user-held copy and opt-in hosted short link has expired or been deleted;
+- loss of unlock data after every user-held copy and opt-in hosted short link has been deleted;
 - social engineering, phishing, physical attacks, or compromised user devices;
 - denial-of-service testing, automated high-volume scanning, or actions that degrade the production service;
 - accessing, modifying, decrypting, or retaining data that does not belong to the researcher.
@@ -61,7 +61,7 @@ eCrypt is experimental software and has not undergone an independent security au
 
 The service remains part of the trust boundary: it receives each random document key for wrapping and returns it after creator or live-policy authorization. When a user opts into a hosted short link, private Blob storage also receives the complete signed encrypted package, including readable public text and wallet policy. The deployed local provider uses a versioned `ECRYPT_MASTER_KEY`; the optional AWS KMS provider uses an HSM-backed key and authenticated encryption context through Vercel OIDC. Compromise of the hosting account, Blob store, active wrapping provider, authorization service, wallet, browser, extension, device, or recipient can affect confidentiality or availability.
 
-Hosted-copy deletion removes eCrypt’s active private record and makes its identifier unavailable through the application. It cannot revoke copies already downloaded, cached, backed up, copied, or forwarded outside eCrypt. Do not describe hosted deletion as remote erasure of recipient-controlled copies.
+Hosted short links do not expire automatically, so their complete signed encrypted packages remain in eCrypt’s private storage until creator-authorized deletion. Hosted-copy deletion removes eCrypt’s active private record and makes its identifier unavailable through the application. It cannot revoke copies already downloaded, cached, backed up, copied, or forwarded outside eCrypt. Do not describe hosted deletion as remote erasure of recipient-controlled copies.
 
 Never delete a wrapping-key version while packages using its `keyId` may still need to open. Never place plaintext, raw wallet addresses, or raw policies in an AWS KMS encryption context or replay-marker pathname; KMS contexts are audit-logged. eCrypt uses only document, policy, author, and key commitments in that context. Review the [README](README.md#security-and-operational-boundary) before operating a deployment with sensitive data.
 

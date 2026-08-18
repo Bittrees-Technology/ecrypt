@@ -61,7 +61,6 @@ type PreviewMode = "continuous" | "pages";
 type HostedShare = {
   id: string;
   url: string;
-  expiresAt: string;
   deleteToken: string;
 };
 type PreviewPiece =
@@ -773,7 +772,7 @@ function AboutPanel() {
           <article><span>Recommended</span><h4>Copy all</h4><p>The readable redacted message and complete unlock-data block together. Paste the entire copy into eCrypt.</p></article>
           <article><span>Public display</span><h4>Redacted message only</h4><p>Public text and inline SHA-256 fingerprints. It is easy to share, but cannot be decrypted by itself.</p></article>
           <article><span>Compact carrier</span><h4>Unlock data only</h4><p>Despite the button’s “unlock hash” label, this is the complete encrypted package—not merely a hash. It is enough to begin an authorized reveal.</p></article>
-          <article><span>Files and links</span><h4>JSON, full link, or short link</h4><p>The JSON file and full link remain user-held. An opt-in short link privately stores the signed encrypted package for up to 30 days, and the creator wallet can delete it sooner.</p></article>
+          <article><span>Files and links</span><h4>JSON, full link, or short link</h4><p>The JSON file and full link remain user-held. An opt-in short link privately stores the signed encrypted package without an automatic expiration, and the creator wallet can delete it.</p></article>
         </div>
       </section>
 
@@ -786,7 +785,7 @@ function AboutPanel() {
             <li><strong>A random document key does.</strong> eCrypt receives it over HTTPS to bind it to the creator and policy, then returns it only after an authorized reveal.</li>
             <li><strong>Policy checks disclose context.</strong> Wallet, contract, network, and balance queries are sent to eCrypt’s blockchain data provider when eligibility is checked.</li>
             <li><strong>The package is visible to its holder.</strong> It exposes signed public text, ciphertext, commitments, metadata, creator, and policy—but not redacted text or commitment nonces.</li>
-            <li><strong>Hosted short links are opt-in storage.</strong> Creating one sends that complete package to eCrypt’s private storage for up to 30 days. Anyone with the random link can retrieve the package and attempt wallet-gated reveal.</li>
+            <li><strong>Hosted short links are opt-in storage.</strong> Creating one sends that complete package to eCrypt’s private storage with no automatic expiration. Anyone with the random link can retrieve the package and attempt wallet-gated reveal until the creator deletes it.</li>
             <li><strong>Replay markers are temporary security data.</strong> eCrypt records random one-time challenge identifiers without document or wallet contents so the same authorization cannot be reused.</li>
           </ul>
         </section>
@@ -809,7 +808,7 @@ function AboutPanel() {
           <h3 id="about-warning-title">Encryption cannot correct an unsafe sharing decision.</h3>
           <ul>
             <li>Anyone with the complete package can attempt the unlock process, but only the creator or a currently eligible wallet should receive the key.</li>
-            <li>There is no account history or recovery vault. A hosted short link is a temporary opt-in copy, not a wallet-synced archive; when it expires or is deleted, eCrypt cannot recover it.</li>
+            <li>There is no account history or recovery vault. A hosted short link is an opt-in stored copy, not a wallet-synced archive; once it is deleted, eCrypt cannot recover it.</li>
             <li>Creator deletion removes eCrypt’s hosted copy, but cannot recall packages another person already copied, downloaded, cached, or forwarded.</li>
             <li>The secret commitment nonce is encrypted with each passage, so a package holder cannot test predictable plaintext guesses against the visible SHA-256 commitment.</li>
             <li>Changing the title, public wording, metadata, policy, ciphertext, or commitments invalidates the signed document and eCrypt rejects it before reveal.</li>
@@ -826,7 +825,7 @@ function AboutPanel() {
         </div>
         <div className="about-faq-list">
           <details><summary>Can someone decrypt just because they have the unlock data?</summary><p>No. The unlock data lets them begin the process. They still need the creator wallet or a wallet that currently satisfies the package’s policy.</p></details>
-          <details><summary>Does eCrypt save my document or a history?</summary><p>No document vault or wallet history is stored. eCrypt stores a complete signed encrypted package only when someone explicitly chooses Hosted short link. That copy expires within 30 days and can be deleted sooner; all other formats remain user-held.</p></details>
+          <details><summary>Does eCrypt save my document or a history?</summary><p>eCrypt does not create an account history or recovery vault. It stores a complete signed encrypted package only when someone explicitly chooses Hosted short link. That copy has no automatic expiration and remains until its creator deletes it; all other formats remain user-held.</p></details>
           <details><summary>Can the creator delete a hosted message?</summary><p>Yes. The creator wallet can sign a gasless deletion request bound to the exact document and short-link identifier. Deletion removes eCrypt’s hosted copy, but cannot erase copies already saved or forwarded elsewhere.</p></details>
           <details><summary>Does a reader need to pay gas?</summary><p>No. The wallet signs a message and eCrypt makes read-only ownership checks. There is no blockchain transaction in the standard create or reveal flow.</p></details>
           <details><summary>Is the visible SHA-256 value the encrypted text?</summary><p>No. It is a nonce-protected commitment. The protected text and the random nonce required to test that commitment are both inside authenticated AES ciphertext.</p></details>
@@ -1191,7 +1190,7 @@ export default function EcryptApp() {
     setShareBusy("create");
     setNotice(null);
     try {
-      const created = await api<{ id: string; expiresAt: string; deleteToken: string }>("/api/share", {
+      const created = await api<{ id: string; deleteToken: string }>("/api/share", {
         document: sealedPackage,
       });
       const next: HostedShare = {
@@ -1202,7 +1201,7 @@ export default function EcryptApp() {
       setHostedShare(next);
       setNotice({
         tone: "success",
-        text: "Short link created. The signed encrypted package will be stored for up to 30 days unless you delete it sooner.",
+        text: "Short link created. It will remain available until the document creator deletes the hosted copy.",
       });
     } catch (error) {
       setNotice({ tone: "error", text: error instanceof Error ? error.message : "The short link could not be created." });
@@ -1651,7 +1650,7 @@ export default function EcryptApp() {
                     </div>
                     <div className="recovery-warning" role="note">
                       <TriangleAlert size={20} aria-hidden="true" />
-                      <p><strong>No account history or recovery</strong><span>eCrypt stores a package only if you explicitly create a hosted short link, and that copy expires within 30 days. If every user-held copy is lost and no active hosted copy remains, recovery is impossible—even for eCrypt.</span></p>
+                      <p><strong>No account history or recovery</strong><span>eCrypt stores a package only if you explicitly create a hosted short link. That copy remains available until the creator deletes it. If every user-held copy is lost and no hosted copy remains, recovery is impossible—even for eCrypt.</span></p>
                     </div>
 
                     <details className="package-options">
@@ -1659,14 +1658,14 @@ export default function EcryptApp() {
                       <p>The complete output above, either link option, and the downloaded package can start wallet-gated reveal. The redacted-message-only format cannot.</p>
                       <div className="hosted-share-option">
                         <span className="field-label">Hosted short link</span>
-                        <p>Opt in to storing the signed encrypted package—including its readable text, wallet policy, and ciphertext—in eCrypt’s private storage for up to 30 days. The URL contains only a random identifier. Anyone with it can retrieve the package, but reveal still requires an eligible wallet.</p>
+                        <p>Opt in to storing the signed encrypted package—including its readable text, wallet policy, and ciphertext—in eCrypt’s private storage until the creator deletes it. The URL contains only a random identifier. Anyone with it can retrieve the package, but reveal still requires an eligible wallet.</p>
                         {hostedShare ? (
                           <>
                             <div className="share-field">
                               <input aria-label="Hosted short link" readOnly value={hostedShare.url} />
                               <button type="button" onClick={copyShortLink}>{copied === "short" ? <Check size={16} /> : <Copy size={16} />}{copied === "short" ? "Copied" : "Copy"}</button>
                             </div>
-                            <p className="share-expiry">Scheduled deletion: {new Date(hostedShare.expiresAt).toLocaleDateString()}.</p>
+                            <p className="share-expiry">No expiration. This link remains available until the creator deletes the hosted copy.</p>
                             <button className="delete-share-button" type="button" onClick={deleteShortLink} disabled={shareBusy !== null}>
                               <Trash2 size={16} /> {shareBusy === "delete" ? "Deleting…" : "Delete hosted copy now"}
                             </button>

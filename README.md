@@ -8,7 +8,7 @@ eCrypt keeps ordinary text readable while encrypting only the passages a writer 
 
 Version 2 signs the complete readable document and metadata, uses nonce-protected commitments whose verification nonces stay inside authenticated ciphertext, rejects non-positive token minimums, consumes document-bound wallet challenges once, and binds each wrapped document key to a named wrapping-key version.
 
-The service does not operate a document vault or wallet history. A user can explicitly create a hosted short link, which stores the complete signed encrypted package for up to 30 days. All other formats remain user-held, and losing every remaining copy of the unlock data makes recovery impossible.
+The service does not operate a wallet-synced history or recovery vault. A user can explicitly create a hosted short link, which stores the complete signed encrypted package without an automatic expiration until the creator deletes it. All other formats remain user-held, and losing every remaining copy of the unlock data makes recovery impossible.
 
 ## Key capabilities
 
@@ -49,7 +49,7 @@ The wallet messages do not submit blockchain transactions and require no gas.
 | **Copy redacted message only** | Signed-format public wording rendered with inline commitments, but no ciphertext package | No | A clean public display copy |
 | **Copy unlock hash only** | The complete encoded package, despite the compact button label | Yes | Send or store unlock data separately |
 | **Self-contained full link** | The same package in the URL fragment | Yes | Open eCrypt without server-side document storage; long packages may be truncated by other applications |
-| **Hosted short link** | A random identifier; eCrypt privately stores the complete signed encrypted package for up to 30 days | Yes | Easier link sharing with explicit, temporary storage |
+| **Hosted short link** | A random identifier; eCrypt privately stores the complete signed encrypted package until creator deletion | Yes | Easier link sharing with explicit persistent storage |
 | **Download `.ecrypt.json`** | The structured version-2 package and policy | Yes | A durable local backup and later upload |
 
 An inline commitment cannot reconstruct a protected passage. The commitment’s random nonce is encrypted with the passage, so holding the package does not allow offline testing of predictable guesses. The complete package is still required for authorized reveal.
@@ -58,7 +58,7 @@ An inline commitment cannot reconstruct a protected passage. The commitment’s 
 
 Creating a hosted short link is an explicit storage action. The URL contains a cryptographically random 128-bit identifier, not document text, wallet addresses, ciphertext, or a document hash. The private store record contains the complete signed package: readable public text, metadata, wallet policy, ciphertext, commitments, creator proof, and protected-key envelope. It does not contain revealed plaintext or commitment nonces outside their authenticated ciphertext.
 
-Hosted records expire automatically within 30 days. The browser that creates a link receives a separate random deletion capability for immediate removal, and the document creator can delete the hosted copy from another device by signing a one-time gasless deletion request bound to the exact package, protected key, and short-link identifier. Deletion makes the identifier unavailable through eCrypt, but it cannot recall packages that recipients, applications, caches, or backups already copied.
+Hosted records have no automatic expiration. The browser that creates a link receives a separate random deletion capability for immediate removal, and the document creator can delete the hosted copy from another device by signing a one-time gasless deletion request bound to the exact package, protected key, and short-link identifier. Deletion makes the identifier unavailable through eCrypt, but it cannot recall packages that recipients, applications, caches, or backups already copied.
 
 ## Access policies
 
@@ -133,13 +133,13 @@ The included providers are:
 - `local-aes-gcm`: versioned 256-bit environment keys for local development and self-hosting. `ECRYPT_ACTIVE_KEY_ID` selects the current version and `ECRYPT_WRAPPING_KEYS` can retain older decrypt-only versions during rotation.
 - `aws-kms`: an HSM-backed AWS KMS adapter using an authenticated KMS encryption context. On Vercel it obtains short-lived AWS credentials through OIDC and an environment-scoped IAM role instead of a permanent AWS access key.
 
-For sensitive production use, configure `aws-kms`, restrict the IAM role to the exact KMS key, retain retired key versions until their packages have expired or migrated, and monitor CloudTrail for unusual encrypt/decrypt activity. The default local provider is operationally simpler but does not provide the isolation or audit guarantees of an external HSM-backed KMS.
+For sensitive production use, configure `aws-kms`, restrict the IAM role to the exact KMS key, retain retired key versions until every package using them has been deleted or migrated, and monitor CloudTrail for unusual encrypt/decrypt activity. The default local provider is operationally simpler but does not provide the isolation or audit guarantees of an external HSM-backed KMS.
 
 ## Package boundary and data exposure
 
 Protected plaintext and commitment nonces remain in the browser. During ordinary sealing and reveal, the service receives only the random document key, signed digests and identifiers, creator address, normalized policy, protected-key envelope, and wallet authorization. Public document wording and encrypted segments do not need to be sent to the key service.
 
-When a user chooses **Hosted short link**, the complete signed encrypted package—including readable public wording, metadata, creator address, policy, ciphertext, commitments, and protected-key envelope—is sent to eCrypt’s private storage. Anyone with the unguessable short URL can retrieve that package until deletion or expiration, although creator or policy eligibility is still required to receive the document key.
+When a user chooses **Hosted short link**, the complete signed encrypted package—including readable public wording, metadata, creator address, policy, ciphertext, commitments, and protected-key envelope—is sent to eCrypt’s private storage without an automatic expiration. Anyone with the unguessable short URL can retrieve that package until the creator deletes it, although creator or policy eligibility is still required to receive the document key.
 
 The policy necessarily reveals wallet and contract addresses to the eCrypt service and its blockchain data provider during live eligibility checks. Clipboard managers, browsers, extensions, messaging services, recipients, and device backups may retain anything a user copies or reveals.
 
