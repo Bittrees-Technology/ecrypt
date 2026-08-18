@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cleanupExpiredChallengeNonces } from "../../../lib/challenge-store";
+import { cleanupExpiredHostedShares } from "../../../lib/share-store";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
   try {
-    const deleted = await cleanupExpiredChallengeNonces();
-    return NextResponse.json({ deleted }, { headers: { "cache-control": "no-store" } });
+    const [replayMarkers, hostedShares] = await Promise.all([
+      cleanupExpiredChallengeNonces(),
+      cleanupExpiredHostedShares(),
+    ]);
+    return NextResponse.json(
+      { deleted: { replayMarkers, hostedShares } },
+      { headers: { "cache-control": "no-store" } },
+    );
   } catch {
-    return NextResponse.json({ error: "Replay-marker cleanup failed." }, { status: 500 });
+    return NextResponse.json({ error: "Temporary-data cleanup failed." }, { status: 500 });
   }
 }

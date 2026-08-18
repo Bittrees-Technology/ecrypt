@@ -1054,6 +1054,58 @@ main {
   max-width: 760px;
 }
 
+.hosted-share-option {
+  background: color-mix(in srgb, var(--acid) 8%, var(--paper));
+  border: 1px solid var(--line);
+  margin: 18px 0 24px;
+  padding: 18px;
+}
+
+.hosted-share-option > p {
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 8px 0 14px;
+}
+
+.hosted-share-option .share-expiry {
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  margin: 9px 0 12px;
+  text-transform: uppercase;
+}
+
+.create-share-button,
+.delete-share-button,
+.creator-delete-option button {
+  align-items: center;
+  border: 1px solid var(--ink);
+  display: flex;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 14px;
+  text-transform: uppercase;
+}
+
+.create-share-button {
+  background: var(--acid);
+}
+
+.delete-share-button,
+.creator-delete-option button {
+  background: #f8e4df;
+  color: #76281d;
+}
+
+.create-share-button:disabled,
+.delete-share-button:disabled,
+.creator-delete-option button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .share-field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1201,6 +1253,26 @@ main {
 
 .policy-summary span {
   color: var(--muted);
+}
+
+.creator-delete-option {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 18px;
+}
+
+.creator-delete-option > strong {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.creator-delete-option p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 8px 0 12px;
 }
 
 .summary-kind {

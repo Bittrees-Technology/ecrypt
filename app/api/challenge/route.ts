@@ -6,7 +6,7 @@ import {
   issueChallenge,
   requestHost,
 } from "../../../lib/server-security";
-import { ChallengeBinding, isDigest, isDocumentId } from "../../../lib/ecrypt";
+import { ChallengeBinding, isDigest, isDocumentId, isShareId } from "../../../lib/ecrypt";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       chainId?: number;
       binding?: Partial<ChallengeBinding>;
     };
-    if (body.action !== "seal" && body.action !== "unlock") {
+    if (body.action !== "seal" && body.action !== "unlock" && body.action !== "delete") {
       return NextResponse.json({ error: "Choose a valid wallet action." }, { status: 400 });
     }
     const binding = body.binding;
@@ -31,7 +31,9 @@ export async function POST(request: Request) {
       !isDigest(binding.documentDigest) ||
       !isDigest(binding.policyDigest) ||
       !isDigest(binding.keyCommitment) ||
-      (body.action === "unlock" && !isDigest(binding.wrappedKeyDigest)) ||
+      ((body.action === "unlock" || body.action === "delete") && !isDigest(binding.wrappedKeyDigest)) ||
+      (body.action === "delete" && !isShareId(binding.shareId)) ||
+      (body.action !== "delete" && binding.shareId !== undefined) ||
       (body.action === "seal" && binding.wrappedKeyDigest !== undefined)
     ) {
       return NextResponse.json(

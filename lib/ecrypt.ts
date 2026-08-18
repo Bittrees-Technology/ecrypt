@@ -81,12 +81,13 @@ export interface EcryptPackage extends EcryptDocumentCore {
 }
 
 export interface ChallengeBinding {
-  action: "seal" | "unlock";
+  action: "seal" | "unlock" | "delete";
   documentId: string;
   documentDigest: string;
   policyDigest: string;
   keyCommitment: string;
   wrappedKeyDigest?: string;
+  shareId?: string;
 }
 
 const DECIMAL_VALUE = /^\d+(?:\.\d+)?$/;
@@ -94,6 +95,7 @@ const INTEGER_VALUE = /^\d+$/;
 const BASE64URL_VALUE = /^[A-Za-z0-9_-]+$/;
 const DIGEST_VALUE = /^[a-f0-9]{64}$/;
 const DOCUMENT_ID_VALUE = /^doc-[a-zA-Z0-9-]{8,64}$/;
+const SHARE_ID_VALUE = /^[A-Za-z0-9_-]{22}$/;
 
 function positiveDecimal(value: string): boolean {
   if (!DECIMAL_VALUE.test(value)) return false;
@@ -236,6 +238,10 @@ export function isDigest(value: unknown): value is string {
 
 export function isDocumentId(value: unknown): value is string {
   return typeof value === "string" && DOCUMENT_ID_VALUE.test(value);
+}
+
+export function isShareId(value: unknown): value is string {
+  return typeof value === "string" && SHARE_ID_VALUE.test(value);
 }
 
 export function isEcryptDocumentCore(value: unknown): value is EcryptDocumentCore {
