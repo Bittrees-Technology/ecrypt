@@ -13,7 +13,7 @@ import {
 } from "./ecrypt";
 import { assertChallengeStoreConfigured, consumeChallengeNonce } from "./challenge-store";
 
-export type ChallengeAction = "seal" | "unlock";
+export type ChallengeAction = "seal" | "unlock" | "delete";
 
 interface ChallengePayload {
   v: 2;
@@ -71,6 +71,7 @@ function canonicalBinding(binding: ChallengeBinding): string {
     policyDigest: binding.policyDigest,
     keyCommitment: binding.keyCommitment,
     ...(binding.wrappedKeyDigest ? { wrappedKeyDigest: binding.wrappedKeyDigest } : {}),
+    ...(binding.shareId ? { shareId: binding.shareId } : {}),
   });
 }
 
@@ -85,9 +86,13 @@ function challengeToken(message: string): string {
 }
 
 function statement(action: ChallengeAction): string {
-  return action === "seal"
-    ? "Sign the complete eCrypt document and authorize protection of its random document key."
-    : "Authorize one reveal attempt for this exact eCrypt document and protected key.";
+  if (action === "seal") {
+    return "Sign the complete eCrypt document and authorize protection of its random document key.";
+  }
+  if (action === "delete") {
+    return "Permanently delete the hosted copy for this exact eCrypt document and short link.";
+  }
+  return "Authorize one reveal attempt for this exact eCrypt document and protected key.";
 }
 
 function challengeMessage(payload: ChallengePayload, token: string): string {
@@ -112,6 +117,9 @@ function challengeMessage(payload: ChallengePayload, token: string): string {
     ...(payload.binding.wrappedKeyDigest
       ? [`- urn:ecrypt:wrapped-key-digest:${payload.binding.wrappedKeyDigest}`]
       : []),
+    ...(payload.binding.shareId
+      ? [`- urn:ecrypt:hosted-share:${payload.binding.shareId}`]
+      : []),
     `- urn:ecrypt:challenge:${token}`,
   ].join("\n");
 }
@@ -131,10 +139,16 @@ export function issueChallenge(
   if (!isAddress(address)) throw new Error("Connect a valid EVM wallet first.");
   if (!validChainId(chainId)) throw new Error("The wallet reported an invalid EVM network.");
   if (binding.action !== action) throw new Error("The wallet authorization action is invalid.");
-  if (action === "unlock" && !binding.wrappedKeyDigest) {
-    throw new Error("The unlock authorization is not bound to a protected key.");
+  if ((action === "unlock" || action === "delete") && !binding.wrappedKeyDigest) {
+    throw new Error("The wallet authorization is not bound to a protected key.");
   }
-  if (action === "seal" && binding.wrappedKeyDigest) {
+  if (action === "delete" && !binding.shareId) {
+    throw new Error("The deletion authorization is not bound to a hosted short link.");
+  }
+  if (action !== "delete" && binding.shareId) {
+    throw new Error("The wallet authorization contains unexpected hosted-link data.");
+  }
+  if (action === "seal" && (binding.wrappedKeyDigest || binding.shareId)) {
     throw new Error("The seal authorization contains unexpected protected-key data.");
   }
 

@@ -9,6 +9,7 @@ process.env.ECRYPT_MASTER_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.ECRYPT_CHALLENGE_SECRET = Buffer.alloc(32, 6).toString("base64");
 process.env.ECRYPT_ACTIVE_KEY_ID = "test-key-2026-08";
 process.env.ECRYPT_ALLOW_MEMORY_NONCE_STORE = "true";
+process.env.ECRYPT_ALLOW_MEMORY_SHARE_STORE = "true";
 process.env.ALCHEMY_API_KEY = "test-key";
 
 const projectRoot = new URL("../", import.meta.url);
@@ -31,11 +32,18 @@ function context() {
 }
 
 async function post(handler, path, body) {
+  return request(handler, "POST", path, body);
+}
+
+async function request(handler, method, path, body) {
   return handler.fetch(
     new Request(`http://localhost${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: "http://localhost" },
-      body: JSON.stringify(body),
+      method,
+      headers: {
+        origin: "http://localhost",
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }),
     runtime(),
     context(),
@@ -58,6 +66,19 @@ function canonicalPolicy(policy) {
       ...(rule.tokenId ? { tokenId: rule.tokenId } : {}),
       ...(rule.minimum ? { minimum: rule.minimum } : {}),
     })),
+  });
+}
+
+function canonicalDocument(core) {
+  return JSON.stringify({
+    version: 2,
+    id: core.id,
+    title: core.title,
+    author: getAddress(core.author).toLowerCase(),
+    createdAt: core.createdAt,
+    policy: JSON.parse(canonicalPolicy(core.policy)),
+    keyCommitment: core.keyCommitment,
+    segments: core.segments,
   });
 }
 
@@ -96,6 +117,59 @@ function unlockBinding(document, wrappedKey) {
     ...sealBinding(document),
     action: "unlock",
     wrappedKeyDigest: wrapperDigest(wrappedKey),
+  };
+}
+
+function deleteBinding(document, wrappedKey, shareId) {
+  return {
+    ...sealBinding(document),
+    action: "delete",
+    wrappedKeyDigest: wrapperDigest(wrappedKey),
+    shareId,
+  };
+}
+
+async function hostedPackage(handler) {
+  const policy = { mode: "any", rules: [{ id: "wallet-owner", kind: "wallet", address: account.address }] };
+  const key = Buffer.alloc(32, 12);
+  const core = {
+    version: 2,
+    id: "doc-hosted001",
+    title: "Hosted package",
+    author: account.address,
+    createdAt: "2026-08-18T00:00:00.000Z",
+    policy,
+    keyCommitment: hash(key),
+    segments: [
+      { kind: "public", text: "The protected value is " },
+      {
+        kind: "encrypted",
+        ciphertext: Buffer.alloc(32, 3).toString("base64url"),
+        iv: Buffer.alloc(12, 4).toString("base64url"),
+        commitment: hash("hosted protected value"),
+      },
+    ],
+  };
+  const document = {
+    documentId: core.id,
+    documentDigest: hash(canonicalDocument(core)),
+    policyDigest: hash(canonicalPolicy(policy)),
+    keyCommitment: core.keyCommitment,
+    author: core.author,
+    policy,
+    key,
+  };
+  const sealed = await seal(handler, document);
+  return {
+    package: {
+      ...core,
+      documentDigest: document.documentDigest,
+      policyDigest: document.policyDigest,
+      wrappedKey: sealed.wrappedKey,
+      creatorProof: sealed.creatorProof,
+    },
+    document,
+    sealed,
   };
 }
 
@@ -188,6 +262,35 @@ test("creator access bypasses the reader policy but strangers cannot", async () 
   const sealed = await seal(handler, document);
   assert.equal((await unlock(handler, document, sealed, account)).status, 200);
   assert.equal((await unlock(handler, document, sealed, stranger)).status, 403);
+});
+
+test("hosted short links retrieve a signed package and the creator can permanently delete it", async () => {
+  const handler = await worker();
+  const { package: documentPackage, document, sealed } = await hostedPackage(handler);
+  const createResponse = await post(handler, "/api/share", { document: documentPackage });
+  assert.equal(createResponse.status, 201, createResponse.status === 201 ? "" : await createResponse.text());
+  const created = await createResponse.json();
+  assert.match(created.id, /^[A-Za-z0-9_-]{22}$/);
+  assert.match(created.deleteToken, /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(Date.parse(created.expiresAt) > Date.now());
+
+  const readResponse = await request(handler, "GET", `/api/share/${created.id}`);
+  assert.equal(readResponse.status, 200, readResponse.status === 200 ? "" : await readResponse.text());
+  assert.deepEqual((await readResponse.json()).document, documentPackage);
+
+  const binding = deleteBinding(document, sealed.wrappedKey, created.id);
+  const strangerProof = await authorization(handler, "delete", stranger, binding);
+  const strangerDelete = await request(handler, "DELETE", `/api/share/${created.id}`, strangerProof);
+  assert.equal(strangerDelete.status, 403);
+  assert.match((await strangerDelete.json()).error, /creator wallet/i);
+
+  const creatorProof = await authorization(handler, "delete", account, binding);
+  const creatorDelete = await request(handler, "DELETE", `/api/share/${created.id}`, creatorProof);
+  assert.equal(creatorDelete.status, 200, creatorDelete.status === 200 ? "" : await creatorDelete.text());
+  assert.equal((await creatorDelete.json()).deleted, true);
+
+  const missingResponse = await request(handler, "GET", `/api/share/${created.id}`);
+  assert.equal(missingResponse.status, 404);
 });
 
 test("the same document-bound wallet authorization cannot be replayed", async () => {
@@ -341,7 +444,10 @@ test("the established copy, JSON, wallet, preview, and About flows remain presen
   assert.match(appSource, /Copy all/);
   assert.match(appSource, /Copy redacted message only/);
   assert.match(appSource, /Copy unlock hash only/);
-  assert.match(appSource, /No history or recovery/);
+  assert.match(appSource, /No account history or recovery/);
+  assert.match(appSource, /Create short link/);
+  assert.match(appSource, /Delete hosted message/);
+  assert.match(appSource, /#share=/);
   assert.match(appSource, /Upload \.ecrypt\.json/);
   assert.match(appSource, /Document title <span>\(optional\)<\/span>/);
   assert.match(appSource, /type Mode = "compose" \| "open" \| "about"/);
@@ -389,10 +495,13 @@ test("repository documentation declares version 2, MIT, and private reporting", 
   assert.match(readme, /https:\/\/ecrypt\.bittrees\.org/);
   assert.match(readme, /Version 2|version 2/);
   assert.match(readme, /nonce-protected/i);
+  assert.match(readme, /Hosted short link/);
+  assert.match(readme, /creator can delete/i);
   assert.match(readme, /AWS KMS/);
   assert.match(license, /^MIT License/);
   assert.match(security, /private vulnerability reporting/);
   assert.match(security, /one-time/i);
+  assert.match(security, /hosted short-link/i);
   assert.match(envExample, /ECRYPT_CHALLENGE_SECRET=/);
   assert.match(envExample, /BLOB_READ_WRITE_TOKEN=/);
   assert.equal(packageJson.license, "MIT");

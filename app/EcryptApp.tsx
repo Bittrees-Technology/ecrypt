@@ -58,6 +58,12 @@ declare global {
 type Mode = "compose" | "open" | "about";
 type Notice = { tone: "error" | "success" | "info"; text: string } | null;
 type PreviewMode = "continuous" | "pages";
+type HostedShare = {
+  id: string;
+  url: string;
+  expiresAt: string;
+  deleteToken: string;
+};
 type PreviewPiece =
   | { key: string; kind: "public"; text: string }
   | { key: string; kind: "revealed"; text: string }
@@ -337,12 +343,35 @@ async function verifyPackageAuthenticity(documentPackage: EcryptPackage): Promis
 }
 
 async function api<T>(path: string, body: unknown): Promise<T> {
+  return requestJson<T>(path, "POST", body);
+}
+
+async function apiGet<T>(path: string): Promise<T> {
+  return requestJson<T>(path, "GET");
+}
+
+async function apiDelete<T>(path: string, body: unknown): Promise<T> {
+  return requestJson<T>(path, "DELETE", body);
+}
+
+async function requestJson<T>(path: string, method: "GET" | "POST" | "DELETE", body?: unknown): Promise<T> {
   const response = await fetch(path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    method,
+    ...(body === undefined ? {} : {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   });
-  const payload = (await response.json()) as T & { error?: string };
+  const raw = await response.text();
+  if (!raw) {
+    throw new Error("eCrypt received an empty server response. Please try again.");
+  }
+  let payload: T & { error?: string };
+  try {
+    payload = JSON.parse(raw) as T & { error?: string };
+  } catch {
+    throw new Error("eCrypt received an incomplete server response. Please try again.");
+  }
   if (!response.ok) throw new Error(payload.error || "The request could not be completed.");
   return payload;
 }
@@ -373,7 +402,7 @@ async function signMessage(address: string, message: string): Promise<`0x${strin
 }
 
 async function walletAuthorization(
-  action: "seal" | "unlock",
+  action: "seal" | "unlock" | "delete",
   wallet: string,
   binding: ChallengeBinding,
 ) {
@@ -698,7 +727,7 @@ function AboutPanel() {
           <article>
             <span>03 / Carry</span>
             <h4>Keep the complete package</h4>
-            <p>The portable version-2 data carries the signed public text and metadata, ciphertext, commitments, creator proof, access policy, and a versioned protected key. It can be copied, linked, or downloaded.</p>
+            <p>The portable version-2 data carries the signed public text and metadata, ciphertext, commitments, creator proof, access policy, and a versioned protected key. It can be copied, downloaded, placed in a self-contained link, or stored by opt-in as a short link.</p>
           </article>
           <article>
             <span>04 / Reveal</span>
@@ -715,7 +744,7 @@ function AboutPanel() {
           <dl className="about-definition-list">
             <div><dt>AES-256-GCM</dt><dd>Encrypts each private passage and detects ciphertext tampering. This is what provides confidentiality.</dd></div>
             <div><dt>Nonce-protected SHA-256</dt><dd>Creates the public inline commitment. Its random verification nonce stays inside the ciphertext, preventing package holders from testing predictable guesses offline.</dd></div>
-            <div><dt>Wallet signatures</dt><dd>The creator signs the complete document digest. Reveal signatures expire, name the exact document and protected key, and cannot be replayed after use.</dd></div>
+            <div><dt>Wallet signatures</dt><dd>The creator signs the complete document digest. Reveal and hosted-copy deletion signatures expire, name the exact target, and cannot be replayed after use.</dd></div>
             <div><dt>Authenticated key wrapping</dt><dd>Binds the protected document key to the signed document, policy, creator, and key commitment under an identified wrapping-key version.</dd></div>
             <div><dt>Live chain reads</dt><dd>Check the wallet’s current token or NFT eligibility on Ethereum, Base, or Robinhood when the reader asks to reveal.</dd></div>
           </dl>
@@ -744,7 +773,7 @@ function AboutPanel() {
           <article><span>Recommended</span><h4>Copy all</h4><p>The readable redacted message and complete unlock-data block together. Paste the entire copy into eCrypt.</p></article>
           <article><span>Public display</span><h4>Redacted message only</h4><p>Public text and inline SHA-256 fingerprints. It is easy to share, but cannot be decrypted by itself.</p></article>
           <article><span>Compact carrier</span><h4>Unlock data only</h4><p>Despite the button’s “unlock hash” label, this is the complete encrypted package—not merely a hash. It is enough to begin an authorized reveal.</p></article>
-          <article><span>Saved file or link</span><h4>JSON and share link</h4><p>The <code>.ecrypt.json</code> file and URL-fragment share link carry the same package in forms suited to backup or direct sharing.</p></article>
+          <article><span>Files and links</span><h4>JSON, full link, or short link</h4><p>The JSON file and full link remain user-held. An opt-in short link privately stores the signed encrypted package for up to 30 days, and the creator wallet can delete it sooner.</p></article>
         </div>
       </section>
 
@@ -757,6 +786,7 @@ function AboutPanel() {
             <li><strong>A random document key does.</strong> eCrypt receives it over HTTPS to bind it to the creator and policy, then returns it only after an authorized reveal.</li>
             <li><strong>Policy checks disclose context.</strong> Wallet, contract, network, and balance queries are sent to eCrypt’s blockchain data provider when eligibility is checked.</li>
             <li><strong>The package is visible to its holder.</strong> It exposes signed public text, ciphertext, commitments, metadata, creator, and policy—but not redacted text or commitment nonces.</li>
+            <li><strong>Hosted short links are opt-in storage.</strong> Creating one sends that complete package to eCrypt’s private storage for up to 30 days. Anyone with the random link can retrieve the package and attempt wallet-gated reveal.</li>
             <li><strong>Replay markers are temporary security data.</strong> eCrypt records random one-time challenge identifiers without document or wallet contents so the same authorization cannot be reused.</li>
           </ul>
         </section>
@@ -779,7 +809,8 @@ function AboutPanel() {
           <h3 id="about-warning-title">Encryption cannot correct an unsafe sharing decision.</h3>
           <ul>
             <li>Anyone with the complete package can attempt the unlock process, but only the creator or a currently eligible wallet should receive the key.</li>
-            <li>There is no account history or recovery vault. Lose every complete copy and the message is unrecoverable—even for eCrypt.</li>
+            <li>There is no account history or recovery vault. A hosted short link is a temporary opt-in copy, not a wallet-synced archive; when it expires or is deleted, eCrypt cannot recover it.</li>
+            <li>Creator deletion removes eCrypt’s hosted copy, but cannot recall packages another person already copied, downloaded, cached, or forwarded.</li>
             <li>The secret commitment nonce is encrypted with each passage, so a package holder cannot test predictable plaintext guesses against the visible SHA-256 commitment.</li>
             <li>Changing the title, public wording, metadata, policy, ciphertext, or commitments invalidates the signed document and eCrypt rejects it before reveal.</li>
             <li>A compromised wallet, browser, extension, clipboard, device, or recipient can expose revealed text.</li>
@@ -795,7 +826,8 @@ function AboutPanel() {
         </div>
         <div className="about-faq-list">
           <details><summary>Can someone decrypt just because they have the unlock data?</summary><p>No. The unlock data lets them begin the process. They still need the creator wallet or a wallet that currently satisfies the package’s policy.</p></details>
-          <details><summary>Does eCrypt save my document or a history?</summary><p>No document vault or wallet history is currently stored. Keep Copy all, the unlock-data block, a share link, or the downloaded JSON package somewhere you control.</p></details>
+          <details><summary>Does eCrypt save my document or a history?</summary><p>No document vault or wallet history is stored. eCrypt stores a complete signed encrypted package only when someone explicitly chooses Hosted short link. That copy expires within 30 days and can be deleted sooner; all other formats remain user-held.</p></details>
+          <details><summary>Can the creator delete a hosted message?</summary><p>Yes. The creator wallet can sign a gasless deletion request bound to the exact document and short-link identifier. Deletion removes eCrypt’s hosted copy, but cannot erase copies already saved or forwarded elsewhere.</p></details>
           <details><summary>Does a reader need to pay gas?</summary><p>No. The wallet signs a message and eCrypt makes read-only ownership checks. There is no blockchain transaction in the standard create or reveal flow.</p></details>
           <details><summary>Is the visible SHA-256 value the encrypted text?</summary><p>No. It is a nonce-protected commitment. The protected text and the random nonce required to test that commitment are both inside authenticated AES ciphertext.</p></details>
           <details><summary>Can someone change the readable public wording?</summary><p>They can edit a copied string, but eCrypt recomputes the complete document digest and verifies the creator’s wallet signature. An altered package is rejected before reveal.</p></details>
@@ -818,15 +850,18 @@ export default function EcryptApp() {
   const [rules, setRules] = useState<AccessRule[]>([
     { id: "rule-wallet", kind: "wallet", address: "" },
   ]);
-  const [busy, setBusy] = useState<"seal" | "unlock" | null>(null);
+  const [busy, setBusy] = useState<"seal" | "unlock" | "delete" | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
   const [sealedPackage, setSealedPackage] = useState<EcryptPackage | null>(null);
   const [openedPackage, setOpenedPackage] = useState<EcryptPackage | null>(null);
+  const [openedShareId, setOpenedShareId] = useState<string | null>(null);
   const [packageInput, setPackageInput] = useState("");
   const [revealed, setRevealed] = useState<Record<number, string>>({});
-  const [copied, setCopied] = useState<"all" | "redacted" | "unlock" | "link" | null>(null);
+  const [copied, setCopied] = useState<"all" | "redacted" | "unlock" | "link" | "short" | null>(null);
+  const [hostedShare, setHostedShare] = useState<HostedShare | null>(null);
+  const [shareBusy, setShareBusy] = useState<"create" | "delete" | null>(null);
 
-  const shareUrl = useMemo(() => {
+  const selfContainedShareUrl = useMemo(() => {
     if (!sealedPackage || typeof window === "undefined") return "";
     return `${window.location.origin}/#ecrypt=${encodedPackage(sealedPackage)}`;
   }, [sealedPackage]);
@@ -847,16 +882,33 @@ export default function EcryptApp() {
     const encoded = window.location.hash.startsWith("#ecrypt=")
       ? window.location.hash.slice("#ecrypt=".length)
       : "";
-    if (!encoded) return;
+    const shareId = window.location.hash.startsWith("#share=")
+      ? window.location.hash.slice("#share=".length)
+      : "";
+    if (!encoded && !shareId) return;
     const timer = window.setTimeout(() => void (async () => {
       try {
-        const loaded = decodePackage(encoded);
+        const loaded = shareId
+          ? (await apiGet<{ document: EcryptPackage }>(`/api/share/${encodeURIComponent(shareId)}`)).document
+          : decodePackage(encoded);
         await verifyPackageAuthenticity(loaded);
         setOpenedPackage(loaded);
+        setOpenedShareId(shareId || null);
         setMode("open");
-        setNotice({ tone: "info", text: "Signed package verified. Connect an eligible wallet to reveal the redactions." });
+        setNotice({
+          tone: "info",
+          text: shareId
+            ? "Hosted package retrieved and creator signature verified. Connect an eligible wallet to reveal the redactions."
+            : "Signed package verified. Connect an eligible wallet to reveal the redactions.",
+        });
       } catch (error) {
-        setNotice({ tone: "error", text: error instanceof Error ? error.message : "The encrypted document link is incomplete or invalid." });
+        const message = error instanceof Error ? error.message : "The encrypted document link is incomplete or invalid.";
+        setNotice({
+          tone: "error",
+          text: /Unexpected (?:end|EOF)|JSON Parse/i.test(message)
+            ? "This self-contained link was truncated. Ask the sender for a short link, Copy all, the unlock-data block, or the saved package."
+            : message,
+        });
       }
     })(), 0);
     return () => window.clearTimeout(timer);
@@ -1114,6 +1166,7 @@ export default function EcryptApp() {
       };
       await verifyPackageAuthenticity(documentPackage);
       setSealedPackage(documentPackage);
+      setHostedShare(null);
       setRevealed({});
       setNotice({ tone: "success", text: "Redacted text is ready. Use Copy all for a self-contained message, or choose one of the separate formats below." });
     } catch (error) {
@@ -1125,11 +1178,101 @@ export default function EcryptApp() {
 
   async function copyShareLink() {
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(selfContainedShareUrl);
       setCopied("link");
       window.setTimeout(() => setCopied((current) => (current === "link" ? null : current)), 1800);
     } catch {
       setNotice({ tone: "error", text: "The share link could not be copied. You can select it manually." });
+    }
+  }
+
+  async function createShortLink() {
+    if (!sealedPackage) return;
+    setShareBusy("create");
+    setNotice(null);
+    try {
+      const created = await api<{ id: string; expiresAt: string; deleteToken: string }>("/api/share", {
+        document: sealedPackage,
+      });
+      const next: HostedShare = {
+        ...created,
+        url: `${window.location.origin}/#share=${created.id}`,
+      };
+      window.localStorage.setItem(`ecrypt:share-delete:${created.id}`, created.deleteToken);
+      setHostedShare(next);
+      setNotice({
+        tone: "success",
+        text: "Short link created. The signed encrypted package will be stored for up to 30 days unless you delete it sooner.",
+      });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "The short link could not be created." });
+    } finally {
+      setShareBusy(null);
+    }
+  }
+
+  async function copyShortLink() {
+    if (!hostedShare) return;
+    try {
+      await navigator.clipboard.writeText(hostedShare.url);
+      setCopied("short");
+      window.setTimeout(() => setCopied((current) => (current === "short" ? null : current)), 1800);
+    } catch {
+      setNotice({ tone: "error", text: "The short link could not be copied automatically. You can select it manually." });
+    }
+  }
+
+  async function deleteShortLink() {
+    if (!hostedShare) return;
+    setShareBusy("delete");
+    setNotice(null);
+    try {
+      await apiDelete<{ deleted: true }>(`/api/share/${encodeURIComponent(hostedShare.id)}`, {
+        deleteToken: hostedShare.deleteToken,
+      });
+      window.localStorage.removeItem(`ecrypt:share-delete:${hostedShare.id}`);
+      setHostedShare(null);
+      setNotice({ tone: "success", text: "The hosted package was deleted. Its short link no longer works." });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "The short link could not be deleted." });
+    } finally {
+      setShareBusy(null);
+    }
+  }
+
+  async function creatorDeleteHostedMessage() {
+    if (!openedPackage || !openedShareId) return;
+    setBusy("delete");
+    setNotice(null);
+    try {
+      const address = getAddress(await ensureWallet());
+      if (address !== getAddress(openedPackage.author)) {
+        throw new Error("Connect the document creator wallet to delete this hosted copy.");
+      }
+      const binding: ChallengeBinding = {
+        action: "delete",
+        documentId: openedPackage.id,
+        documentDigest: openedPackage.documentDigest,
+        policyDigest: openedPackage.policyDigest,
+        keyCommitment: openedPackage.keyCommitment,
+        wrappedKeyDigest: await wrappedKeyDigest(openedPackage),
+        shareId: openedShareId,
+      };
+      const authorization = await walletAuthorization("delete", address, binding);
+      await apiDelete<{ deleted: true }>(`/api/share/${encodeURIComponent(openedShareId)}`, authorization);
+      window.localStorage.removeItem(`ecrypt:share-delete:${openedShareId}`);
+      setOpenedPackage(null);
+      setOpenedShareId(null);
+      setRevealed({});
+      window.history.replaceState(null, "", window.location.pathname);
+      setNotice({
+        tone: "success",
+        text: "Creator verified. The hosted package was deleted and its short link no longer works. Copies already saved or sent cannot be recalled.",
+      });
+    } catch (error) {
+      setNotice({ tone: "error", text: error instanceof Error ? error.message : "The hosted package could not be deleted." });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -1167,6 +1310,7 @@ export default function EcryptApp() {
     const loaded = decodePackage(value);
     await verifyPackageAuthenticity(loaded);
     setOpenedPackage(loaded);
+    setOpenedShareId(null);
     setRevealed({});
     setNotice({ tone: "success", text: "Creator signature verified. Connect an eligible wallet to reveal the redactions." });
   }
@@ -1507,15 +1651,36 @@ export default function EcryptApp() {
                     </div>
                     <div className="recovery-warning" role="note">
                       <TriangleAlert size={20} aria-hidden="true" />
-                      <p><strong>No history or recovery</strong><span>eCrypt does not store your documents. If every copy of the unlock data is lost—including Copy all, the unlock hash, share link, and downloaded package—recovery is impossible, even for eCrypt.</span></p>
+                      <p><strong>No account history or recovery</strong><span>eCrypt stores a package only if you explicitly create a hosted short link, and that copy expires within 30 days. If every user-held copy is lost and no active hosted copy remains, recovery is impossible—even for eCrypt.</span></p>
                     </div>
 
                     <details className="package-options">
                       <summary>More ways to keep the unlockable version</summary>
-                      <p>The complete output above, this share link, and the downloaded package all contain the encrypted passages and access policy. The redacted-message-only format does not.</p>
-                      <label className="field-label" htmlFor="share-url">Private share link</label>
+                      <p>The complete output above, either link option, and the downloaded package can start wallet-gated reveal. The redacted-message-only format cannot.</p>
+                      <div className="hosted-share-option">
+                        <span className="field-label">Hosted short link</span>
+                        <p>Opt in to storing the signed encrypted package—including its readable text, wallet policy, and ciphertext—in eCrypt’s private storage for up to 30 days. The URL contains only a random identifier. Anyone with it can retrieve the package, but reveal still requires an eligible wallet.</p>
+                        {hostedShare ? (
+                          <>
+                            <div className="share-field">
+                              <input aria-label="Hosted short link" readOnly value={hostedShare.url} />
+                              <button type="button" onClick={copyShortLink}>{copied === "short" ? <Check size={16} /> : <Copy size={16} />}{copied === "short" ? "Copied" : "Copy"}</button>
+                            </div>
+                            <p className="share-expiry">Scheduled deletion: {new Date(hostedShare.expiresAt).toLocaleDateString()}.</p>
+                            <button className="delete-share-button" type="button" onClick={deleteShortLink} disabled={shareBusy !== null}>
+                              <Trash2 size={16} /> {shareBusy === "delete" ? "Deleting…" : "Delete hosted copy now"}
+                            </button>
+                          </>
+                        ) : (
+                          <button className="create-share-button" type="button" onClick={createShortLink} disabled={shareBusy !== null}>
+                            <ExternalLink size={16} /> {shareBusy === "create" ? "Creating…" : "Create short link"}
+                          </button>
+                        )}
+                      </div>
+                      <label className="field-label" htmlFor="share-url">Self-contained full link</label>
+                      <p>This link stores nothing on eCrypt, but long documents may produce URLs that messaging applications truncate.</p>
                       <div className="share-field">
-                        <input id="share-url" readOnly value={shareUrl} />
+                        <input id="share-url" readOnly value={selfContainedShareUrl} />
                         <button type="button" onClick={copyShareLink}>{copied === "link" ? <Check size={16} /> : <Copy size={16} />}{copied === "link" ? "Copied" : "Copy"}</button>
                       </div>
                       <button className="download-button" type="button" onClick={() => downloadPackage(sealedPackage)}><Download size={16} /> Download .ecrypt.json</button>
@@ -1553,7 +1718,7 @@ export default function EcryptApp() {
                   <div>
                     <div className="panel-heading">
                       <div><span className="eyebrow">Document / ciphertext</span><h2>Public until proven eligible</h2></div>
-                      <button className="compact-action" type="button" onClick={() => { setOpenedPackage(null); setRevealed({}); window.history.replaceState(null, "", window.location.pathname); }}><Upload size={15} /> Paste another</button>
+                      <button className="compact-action" type="button" onClick={() => { setOpenedPackage(null); setOpenedShareId(null); setRevealed({}); window.history.replaceState(null, "", window.location.pathname); }}><Upload size={15} /> Paste another</button>
                     </div>
                     <RedactedDocument documentPackage={openedPackage} revealed={revealed} />
                   </div>
@@ -1587,6 +1752,15 @@ export default function EcryptApp() {
                       <button className="seal-button" type="button" onClick={unlockDocument} disabled={busy !== null}>
                         <KeyRound size={18} /> {busy === "unlock" ? "Checking access…" : "Verify & reveal redactions"} {busy !== "unlock" && <ArrowRight size={18} />}
                       </button>
+                    )}
+                    {openedShareId && (
+                      <div className="creator-delete-option">
+                        <strong>Creator deletion</strong>
+                        <p>The creator wallet can permanently remove this hosted package. Copies already downloaded, copied, or forwarded cannot be recalled.</p>
+                        <button type="button" onClick={creatorDeleteHostedMessage} disabled={busy !== null}>
+                          <Trash2 size={16} /> {busy === "delete" ? "Deleting…" : "Delete hosted message"}
+                        </button>
+                      </div>
                     )}
                     <div className="security-footnote"><Wallet size={16} /><span>{wallet ? `Connected as ${shortAddress(wallet)}` : "Connect an EVM wallet when prompted."}</span></div>
                   </aside>
