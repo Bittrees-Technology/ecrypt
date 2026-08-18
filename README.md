@@ -4,11 +4,24 @@ Authenticated, wallet-gated encryption for inline text redactions on Ethereum, B
 
 [Live app](https://ecrypt.bittrees.org) · [Security policy](SECURITY.md) · [MIT license](LICENSE)
 
-eCrypt keeps ordinary text readable while encrypting only the passages a writer marks. The output remains an easy-to-copy document with inline SHA-256 commitments and a portable unlock-data block. An eligible reader connects an EVM wallet, signs a gasless authorization, and satisfies the document’s live wallet or token policy before the protected passages are decrypted in the browser.
+eCrypt keeps ordinary text readable while encrypting only the passages a writer marks. The output remains an easy-to-copy document with inline SHA-256 commitments and a portable unlock-data block. The creator or an eligible reader connects an EVM wallet and signs a gasless authorization before the protected passages are decrypted in the browser.
 
 Version 2 signs the complete readable document and metadata, uses nonce-protected commitments whose verification nonces stay inside authenticated ciphertext, rejects non-positive token minimums, consumes document-bound wallet challenges once, and binds each wrapped document key to a named wrapping-key version.
 
 The service does not operate a wallet-synced history or recovery vault. A user can explicitly create a hosted short link, which stores the complete signed encrypted package without an automatic expiration until the creator deletes it. All other formats remain user-held, and losing every remaining copy of the unlock data makes recovery impossible.
+
+## Current production build
+
+| Surface | Current behavior |
+| --- | --- |
+| Package format | Version 2 only; complete public wording, metadata, policy, ciphertext, commitments, and key binding are authenticated by the creator signature |
+| Reveal authority | The creator wallet or a wallet satisfying up to five `ANY`/`ALL` conditions |
+| Networks | Ethereum, Base, and Robinhood mainnets |
+| Input | Manual copy/paste is the default; `.ecrypt.json`, self-contained full links, and hosted short links are also supported |
+| Hosted short links | Opt-in private storage with no automatic expiration; the link contains only a random 128-bit identifier |
+| Hosted deletion | Creator-authorized and gasless; the deletion controls appear only while the signed creator wallet is connected |
+| Account behavior | Wallet account changes are detected immediately, and revealed text is hidden when the account changes or disconnects |
+| Onchain writes | None; the current build does not publish documents or hashes to a blockchain |
 
 ## Key capabilities
 
@@ -21,8 +34,9 @@ The service does not operate a wallet-synced history or recovery vault. A user c
 - Let the creator wallet decrypt its package regardless of the reader policy.
 - Use an optional title; a blank title remains absent.
 - Paste a package by default, upload `.ecrypt.json`, open a self-contained URL-fragment link, or retrieve an opt-in hosted short link.
-- Let the creator wallet permanently delete eCrypt’s hosted copy through a gasless, one-time signature.
+- Let the creator wallet permanently delete eCrypt’s hosted copy through a gasless, one-time signature; creator-deletion controls stay hidden from every other connected wallet.
 - Connect or switch wallets through the Ethereum, Base, and Robinhood shortcuts.
+- Detect wallet account changes and hide revealed plaintext when the account changes or disconnects.
 - Link creator and policy addresses to their respective block explorers.
 
 ## Basic workflow
@@ -37,7 +51,7 @@ The service does not operate a wallet-synced history or recovery vault. A user c
 3. Add one or more reveal conditions and choose whether `ANY` or `ALL` must pass.
 4. Choose **Create redacted text** and sign the document-bound wallet message.
 5. Preserve or share one of the output formats below.
-6. A reader opens **Paste & decrypt**, pastes or uploads the package, connects an eligible wallet, and signs a fresh one-time reveal authorization.
+6. The creator or a reader opens **Paste & decrypt**, pastes or uploads the package (or opens either link type), connects a wallet, and signs a fresh one-time reveal authorization.
 
 The wallet messages do not submit blockchain transactions and require no gas.
 
@@ -46,7 +60,7 @@ The wallet messages do not submit blockchain transactions and require no gas.
 | Option | Contains | Can start decryption? | Intended use |
 | --- | --- | --- | --- |
 | **Copy all** | Public message with inline commitments plus the complete unlock-data block | Yes | One self-contained copy |
-| **Copy redacted message only** | Signed-format public wording rendered with inline commitments, but no ciphertext package | No | A clean public display copy |
+| **Copy redacted message only** | Public wording with inline commitments, but no ciphertext package or creator proof | No | A clean public display copy |
 | **Copy unlock hash only** | The complete encoded package, despite the compact button label | Yes | Send or store unlock data separately |
 | **Self-contained full link** | The same package in the URL fragment | Yes | Open eCrypt without server-side document storage; long packages may be truncated by other applications |
 | **Hosted short link** | A random identifier; eCrypt privately stores the complete signed encrypted package until creator deletion | Yes | Easier link sharing with explicit persistent storage |
@@ -58,7 +72,7 @@ An inline commitment cannot reconstruct a protected passage. The commitment’s 
 
 Creating a hosted short link is an explicit storage action. The URL contains a cryptographically random 128-bit identifier, not document text, wallet addresses, ciphertext, or a document hash. The private store record contains the complete signed package: readable public text, metadata, wallet policy, ciphertext, commitments, creator proof, and protected-key envelope. It does not contain revealed plaintext or commitment nonces outside their authenticated ciphertext.
 
-Hosted records have no automatic expiration. The browser that creates a link receives a separate random deletion capability for immediate removal, and the document creator can delete the hosted copy from another device by signing a one-time gasless deletion request bound to the exact package, protected key, and short-link identifier. Deletion makes the identifier unavailable through eCrypt, but it cannot recall packages that recipients, applications, caches, or backups already copied.
+Hosted records have no automatic expiration. The browser that creates a link receives a separate random deletion capability for immediate removal. Later, the creator can open the hosted link from another device and connect the signed creator wallet; only that wallet sees the Creator deletion section. Deletion uses a one-time gasless signature bound to the exact package, protected key, and short-link identifier. It makes the identifier unavailable through eCrypt, but cannot recall packages that recipients, applications, caches, or backups already copied.
 
 ## Access policies
 
@@ -81,7 +95,7 @@ The creator address is part of the signed package and always remains eligible to
 | Base mainnet | `8453` | [Basescan](https://basescan.org) |
 | Robinhood mainnet | `4663` | [Blockscout](https://robinhoodchain.blockscout.com) |
 
-Network shortcuts request connection and switching through the wallet provider. If Base or Robinhood is missing, eCrypt requests permission to add it. A wallet can require confirmation or reject any request.
+Network shortcuts request connection and switching through the wallet provider. If Base or Robinhood is missing, eCrypt requests permission to add it. A wallet can require confirmation or reject any request. eCrypt listens for account changes: switching accounts immediately updates creator-only controls and clears revealed text, while **Disconnect wallet** clears eCrypt’s connected-account state even if the wallet application still lists the site as approved.
 
 ## Version-2 security design
 
