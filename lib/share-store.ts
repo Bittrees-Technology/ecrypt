@@ -1,9 +1,7 @@
-import { del, get, list, put } from "@vercel/blob";
+import { del, get, put } from "@vercel/blob";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { EcryptPackage, isEcryptPackage, isShareId } from "./ecrypt";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const RETENTION_DAYS = 30;
 const SHARE_ID = /^[A-Za-z0-9_-]{22}$/;
 const DELETE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 const memoryShares = new Map<string, StoredShare>();
@@ -11,14 +9,15 @@ const memoryShares = new Map<string, StoredShare>();
 interface StoredShare {
   version: 1;
   createdAt: string;
-  expiresAt: string;
+  // Kept optional so links created before permanent storage was introduced
+  // remain readable without honoring their former scheduled deletion date.
+  expiresAt?: string;
   deleteTokenHash: string;
   document: EcryptPackage;
 }
 
 export interface CreatedShare {
   id: string;
-  expiresAt: string;
   deleteToken: string;
 }
 
@@ -41,8 +40,8 @@ function isStoredShare(value: unknown): value is StoredShare {
     item.version === 1 &&
     typeof item.createdAt === "string" &&
     Number.isFinite(Date.parse(item.createdAt)) &&
-    typeof item.expiresAt === "string" &&
-    Number.isFinite(Date.parse(item.expiresAt)) &&
+    (item.expiresAt === undefined ||
+      (typeof item.expiresAt === "string" && Number.isFinite(Date.parse(item.expiresAt)))) &&
     typeof item.deleteTokenHash === "string" &&
     /^[a-f0-9]{64}$/.test(item.deleteTokenHash) &&
     isEcryptPackage(item.document)
@@ -66,7 +65,6 @@ export async function createHostedShare(document: EcryptPackage): Promise<Create
   const stored: StoredShare = {
     version: 1,
     createdAt: createdAt.toISOString(),
-    expiresAt: new Date(createdAt.getTime() + RETENTION_DAYS * DAY_MS).toISOString(),
     deleteTokenHash: tokenHash(deleteToken),
     document,
   };
@@ -84,7 +82,7 @@ export async function createHostedShare(document: EcryptPackage): Promise<Create
     memoryShares.set(id, stored);
   }
 
-  return { id, expiresAt: stored.expiresAt, deleteToken };
+  return { id, deleteToken };
 }
 
 export async function getHostedShare(id: string): Promise<EcryptPackage | null> {
@@ -103,11 +101,7 @@ export async function getHostedShare(id: string): Promise<EcryptPackage | null> 
     stored = memoryShares.get(id) || null;
   }
 
-  if (!stored || Date.now() >= Date.parse(stored.expiresAt)) {
-    await deleteHostedShareById(id);
-    return null;
-  }
-  return stored.document;
+  return stored?.document || null;
 }
 
 async function deleteHostedShareById(id: string): Promise<void> {
@@ -149,32 +143,4 @@ export async function deleteHostedShare(id: string, suppliedToken: string): Prom
   if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return false;
   await deleteHostedShareById(id);
   return true;
-}
-
-export async function cleanupExpiredHostedShares(): Promise<number> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    let deleted = 0;
-    for (const [id, stored] of memoryShares) {
-      if (Date.parse(stored.expiresAt) <= Date.now()) {
-        memoryShares.delete(id);
-        deleted += 1;
-      }
-    }
-    return deleted;
-  }
-
-  const cutoff = Date.now() - RETENTION_DAYS * DAY_MS;
-  let cursor: string | undefined;
-  let deleted = 0;
-  for (let page = 0; page < 10; page += 1) {
-    const result = await list({ prefix: "ecrypt-shares/", limit: 1_000, cursor });
-    const expired = result.blobs.filter((blob) => blob.uploadedAt.getTime() <= cutoff);
-    if (expired.length) {
-      await del(expired.map((blob) => blob.url));
-      deleted += expired.length;
-    }
-    if (!result.hasMore || !result.cursor) break;
-    cursor = result.cursor;
-  }
-  return deleted;
 }

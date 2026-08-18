@@ -30,7 +30,7 @@ export async function GET(request: Request, context: RouteContext) {
     const document = await getHostedShare(id);
     if (!document) {
       return NextResponse.json(
-        { error: "This short link has expired, was deleted, or does not exist." },
+        { error: "This short link was deleted or does not exist." },
         { status: 404 },
       );
     }
@@ -64,7 +64,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       const document = await getHostedShare(id);
       if (!document) {
         return NextResponse.json(
-          { error: "This short link has expired, was deleted, or does not exist." },
+          { error: "This short link was deleted or does not exist." },
           { status: 404 },
         );
       }
