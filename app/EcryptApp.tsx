@@ -584,7 +584,7 @@ function DocumentPreview({
         <div className="preview-mode-bar">
           <span>Preview view</span>
           <div role="group" aria-label="Preview display mode">
-            <button
+            <button data-insights="continuous"
               className={previewMode === "continuous" ? "active" : ""}
               type="button"
               aria-pressed={previewMode === "continuous"}
@@ -592,7 +592,7 @@ function DocumentPreview({
             >
               Continuous
             </button>
-            <button
+            <button data-insights="pages"
               className={previewMode === "pages" ? "active" : ""}
               type="button"
               aria-pressed={previewMode === "pages"}
@@ -624,11 +624,11 @@ function DocumentPreview({
 
       {previewMode === "pages" && hasMultiplePages && (
         <nav className="preview-pagination" aria-label="Document preview pages">
-          <button type="button" onClick={() => selectPage(0)} disabled={safePage === 0}>First</button>
-          <button type="button" onClick={() => selectPage(safePage - 1)} disabled={safePage === 0}>Previous</button>
+          <button data-insights="first" type="button" onClick={() => selectPage(0)} disabled={safePage === 0}>First</button>
+          <button data-insights="previous" type="button" onClick={() => selectPage(safePage - 1)} disabled={safePage === 0}>Previous</button>
           <span aria-live="polite">Page {safePage + 1} of {pages.length}</span>
-          <button type="button" onClick={() => selectPage(safePage + 1)} disabled={safePage === pages.length - 1}>Next</button>
-          <button type="button" onClick={() => selectPage(pages.length - 1)} disabled={safePage === pages.length - 1}>Last</button>
+          <button data-insights="next" type="button" onClick={() => selectPage(safePage + 1)} disabled={safePage === pages.length - 1}>Next</button>
+          <button data-insights="last" type="button" onClick={() => selectPage(pages.length - 1)} disabled={safePage === pages.length - 1}>Last</button>
         </nav>
       )}
     </div>
@@ -1427,7 +1427,7 @@ export default function EcryptApp() {
   return (
     <div className="site-shell">
       <header className="site-header">
-        <a className="brand" href="#top" aria-label="eCrypt home">
+        <a data-insights="ecrypt-home" className="brand" href="#top" aria-label="eCrypt home">
           <span className="brand-mark">e/</span>
           <span>CRYPT</span>
         </a>
@@ -1470,7 +1470,7 @@ export default function EcryptApp() {
 
         <section className="tool-section" aria-label="eCrypt document tool">
           <div className="mode-switch" role="tablist" aria-label="Document action">
-            <button
+            <button data-insights="create-redact"
               id="compose-tab"
               role="tab"
               aria-selected={mode === "compose"}
@@ -1481,7 +1481,7 @@ export default function EcryptApp() {
             >
               <FileLock2 size={17} /> Create &amp; redact <span>01</span>
             </button>
-            <button
+            <button data-insights="paste-decrypt"
               id="open-tab"
               role="tab"
               aria-selected={mode === "open"}
@@ -1492,7 +1492,7 @@ export default function EcryptApp() {
             >
               <KeyRound size={17} /> Paste &amp; decrypt <span>02</span>
             </button>
-            <button
+            <button data-insights="about"
               id="about-tab"
               role="tab"
               aria-selected={mode === "about"}
@@ -1509,7 +1509,7 @@ export default function EcryptApp() {
             <div className={`notice notice-${notice.tone}`} role="status">
               {notice.tone === "success" ? <Check size={16} /> : <ShieldCheck size={16} />}
               <span>{notice.text}</span>
-              <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message">×</button>
+              <button data-insights="dismiss-message" type="button" onClick={() => setNotice(null)} aria-label="Dismiss message">×</button>
             </div>
           )}
 
@@ -1521,7 +1521,7 @@ export default function EcryptApp() {
                     <span className="eyebrow">Document / plaintext</span>
                     <h2>Choose what stays private</h2>
                   </div>
-                  <button className="compact-action" type="button" onClick={redactSelection}>
+                  <button data-insights="redact-selection" className="compact-action" type="button" onClick={redactSelection}>
                     <Eye size={15} /> Redact selection
                   </button>
                 </div>
@@ -1562,8 +1562,8 @@ export default function EcryptApp() {
                 {rules.length > 1 && (
                   <div className="match-toggle" aria-label="Access condition mode">
                     <span>Require</span>
-                    <button className={matchMode === "any" ? "active" : ""} onClick={() => setMatchMode("any")} type="button">Any</button>
-                    <button className={matchMode === "all" ? "active" : ""} onClick={() => setMatchMode("all")} type="button">All</button>
+                    <button data-insights="any" className={matchMode === "any" ? "active" : ""} onClick={() => setMatchMode("any")} type="button">Any</button>
+                    <button data-insights="all" className={matchMode === "all" ? "active" : ""} onClick={() => setMatchMode("all")} type="button">All</button>
                   </div>
                 )}
 
@@ -1590,7 +1590,7 @@ export default function EcryptApp() {
                         <>
                           <label className="field-label" htmlFor={`${rule.id}-address`}>Allowed address</label>
                           <input id={`${rule.id}-address`} value={rule.address || ""} onChange={(event) => updateRule(rule.id, { address: event.target.value })} placeholder="0x…" autoComplete="off" />
-                          {wallet && !rule.address && <button type="button" className="text-action" onClick={() => updateRule(rule.id, { address: wallet })}>Use connected wallet</button>}
+                          {wallet && !rule.address && <button data-insights="use-connected-wallet" type="button" className="text-action" onClick={() => updateRule(rule.id, { address: wallet })}>Use connected wallet</button>}
                         </>
                       ) : (
                         <>
@@ -1628,7 +1628,7 @@ export default function EcryptApp() {
                   ))}
                 </div>
 
-                <button className="add-condition" type="button" onClick={addRule}><Plus size={15} /> Add condition</button>
+                <button data-insights="add-condition" className="add-condition" type="button" onClick={addRule}><Plus size={15} /> Add condition</button>
                 <button className="seal-button" type="button" onClick={sealDocument} disabled={busy !== null}>
                   <LockKeyhole size={18} />
                   {busy === "seal" ? "Encrypting redactions…" : "Create redacted text"}
@@ -1698,7 +1698,7 @@ export default function EcryptApp() {
                         <input id="share-url" readOnly value={selfContainedShareUrl} />
                         <button type="button" onClick={copyShareLink}>{copied === "link" ? <Check size={16} /> : <Copy size={16} />}{copied === "link" ? "Copied" : "Copy"}</button>
                       </div>
-                      <button className="download-button" type="button" onClick={() => downloadPackage(sealedPackage)}><Download size={16} /> Download .ecrypt.json</button>
+                      <button data-insights="download-ecryptjson" className="download-button" type="button" onClick={() => downloadPackage(sealedPackage)}><Download size={16} /> Download .ecrypt.json</button>
                     </details>
                   </div>
                 </section>
@@ -1713,7 +1713,7 @@ export default function EcryptApp() {
                   <h2>Paste redacted text to decrypt</h2>
                   <p>Paste text created with “Copy all” or “Copy unlock hash only.” eCrypt detects the unlock-data block automatically. Share links and <code>.ecrypt.json</code> packages still work too.</p>
                   <textarea value={packageInput} onChange={(event) => setPackageInput(event.target.value)} onPaste={handlePackagePaste} placeholder={`Public text [sha256:…]\n\n${ECRYPT_DATA_BEGIN}\n…`} aria-label="Unlockable redacted text" />
-                  <button className="seal-button open-button" type="button" onClick={loadPackage} disabled={!packageInput.trim()}><FileLock2 size={18} /> Open pasted text <ArrowRight size={18} /></button>
+                  <button data-insights="open-pasted-text" className="seal-button open-button" type="button" onClick={loadPackage} disabled={!packageInput.trim()}><FileLock2 size={18} /> Open pasted text <ArrowRight size={18} /></button>
                   <div className="upload-package-option">
                     <span>Or use a saved package</span>
                     <input
@@ -1723,7 +1723,7 @@ export default function EcryptApp() {
                       onChange={handlePackageFile}
                       hidden
                     />
-                    <button className="download-button upload-json-button" type="button" onClick={() => packageFileRef.current?.click()}>
+                    <button data-insights="upload-ecryptjson" className="download-button upload-json-button" type="button" onClick={() => packageFileRef.current?.click()}>
                       <Upload size={16} /> Upload .ecrypt.json
                     </button>
                   </div>
@@ -1733,7 +1733,7 @@ export default function EcryptApp() {
                   <div>
                     <div className="panel-heading">
                       <div><span className="eyebrow">Document / ciphertext</span><h2>Public until proven eligible</h2></div>
-                      <button className="compact-action" type="button" onClick={() => { setOpenedPackage(null); setOpenedShareId(null); setRevealed({}); window.history.replaceState(null, "", window.location.pathname); }}><Upload size={15} /> Paste another</button>
+                      <button data-insights="paste-another" className="compact-action" type="button" onClick={() => { setOpenedPackage(null); setOpenedShareId(null); setRevealed({}); window.history.replaceState(null, "", window.location.pathname); }}><Upload size={15} /> Paste another</button>
                     </div>
                     <RedactedDocument documentPackage={openedPackage} revealed={revealed} />
                   </div>
@@ -1797,7 +1797,7 @@ export default function EcryptApp() {
       <footer>
         <div className="brand footer-brand"><span className="brand-mark">e/</span><span>CRYPT</span></div>
         <p>Experimental cryptographic software by Bittrees. Do not use for regulated or mission-critical data without an independent security review.</p>
-        <a href="https://bittrees.org" target="_blank" rel="noreferrer">bittrees.org <ArrowRight size={14} /></a>
+        <a data-insights="navigate-bittreesorg/" href="https://bittrees.org" target="_blank" rel="noreferrer">bittrees.org <ArrowRight size={14} /></a>
       </footer>
     </div>
   );
