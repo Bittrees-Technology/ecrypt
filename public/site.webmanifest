@@ -2,6 +2,8 @@
   "name": "eCrypt — Wallet-Gated Text Encryption & Redaction",
   "short_name": "eCrypt",
   "description": "Encrypt inline text redactions and reveal them to eligible wallets or token holders.",
+  "lang": "en-US",
+  "categories": ["security", "productivity", "utilities"],
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -12,12 +14,14 @@
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

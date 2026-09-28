@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">eCrypt — Encrypt the redactions. Keep the proof public.</title>
+  <desc id="description">A legal-document-inspired eCrypt social card showing readable text, encrypted redactions, and wallet-gated proof.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#d9d3c6" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <filter id="paper-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="-10" dy="14" stdDeviation="12" flood-color="#141512" flood-opacity=".13"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="#f3f0e8"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <g transform="translate(54 54)">
+    <rect x="0" y="0" width="604" height="4" fill="#141512"/>
+    <rect x="0" y="4" width="1" height="88" fill="#141512"/>
+    <rect x="0" y="92" width="604" height="4" fill="#141512"/>
+    <rect x="446" y="4" width="1" height="88" fill="#141512"/>
+    <text x="28" y="66" fill="#141512" font-family="Arial, Helvetica, sans-serif" font-size="35" font-weight="700" letter-spacing="11">e/CRYPT</text>
+    <g transform="translate(520 48)" stroke="#141512" fill="none">
+      <circle r="15" stroke-width="1.5"/>
+      <path d="M-27 0H27M0-27V27" stroke-width="1.5"/>
+      <rect x="-3" y="-3" width="6" height="6" fill="#baff3d"/>
+    </g>
+
+    <text x="0" y="196" fill="#0f7d55" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" letter-spacing="3">WALLET-GATED REDACTION PROTOCOL</text>
+    <text x="0" y="282" fill="#141512" font-family="Georgia, 'Times New Roman', serif" font-size="68">Encrypt the redactions.</text>
+    <text x="0" y="360" fill="#141512" font-family="Georgia, 'Times New Roman', serif" font-size="68">Keep the proof public.</text>
+    <text x="0" y="414" fill="#53564f" font-family="Arial, Helvetica, sans-serif" font-size="20">Readable public text. Encrypted passages.</text>
+    <text x="0" y="445" fill="#53564f" font-family="Arial, Helvetica, sans-serif" font-size="20">Live wallet policy. No onchain transaction.</text>
+
+    <line x1="0" y1="492" x2="604" y2="492" stroke="#141512" stroke-width="2"/>
+    <g transform="translate(0 520)" fill="#0f5f3f" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" letter-spacing="2.5">
+      <text x="0" y="0">ETHEREUM</text>
+      <circle cx="143" cy="-6" r="3" fill="#141512"/>
+      <text x="168" y="0">BASE</text>
+      <circle cx="260" cy="-6" r="3" fill="#141512"/>
+      <text x="285" y="0">ROBINHOOD</text>
+    </g>
+  </g>
+
+  <g transform="translate(760 38) rotate(2 190 276)" filter="url(#paper-shadow)">
+    <rect width="390" height="554" fill="#fffdf7" stroke="#141512" stroke-width="1.5"/>
+    <rect x="24" y="22" width="342" height="64" fill="#141512"/>
+    <text x="42" y="49" fill="#baff3d" font-family="'Courier New', monospace" font-size="13" font-weight="700" letter-spacing="2">SIGNED PUBLIC COPY</text>
+    <text x="42" y="70" fill="#fffdf7" font-family="'Courier New', monospace" font-size="10" letter-spacing="1.5">DOCUMENT / CIPHERTEXT / POLICY</text>
+
+    <g transform="translate(28 118)" font-family="'Courier New', monospace" font-size="12" fill="#141512">
+      <text x="0" y="0">The authorized wallet may reveal</text>
+      <rect x="0" y="15" width="296" height="22" fill="#141512"/>
+      <text x="183" y="31" fill="#baff3d">sha256:7A91…F20C</text>
+      <text x="0" y="61">when the signed access policy is met.</text>
+
+      <text x="0" y="112">All remaining language stays readable</text>
+      <rect x="0" y="127" width="326" height="22" fill="#141512"/>
+      <text x="210" y="143" fill="#baff3d">sha256:C4D2…19AE</text>
+      <text x="0" y="173">and every protected passage is bound</text>
+      <text x="0" y="194">to the creator's complete document.</text>
+
+      <rect x="0" y="229" width="326" height="112" fill="#eef3e9" stroke="#0f7d55"/>
+      <text x="16" y="253" fill="#0f5f3f" font-size="10" font-weight="700" letter-spacing="1">REDACTION PROOF</text>
+      <line x1="16" y1="267" x2="310" y2="267" stroke="#0f7d55"/>
+      <text x="16" y="289" fill="#53564f" font-size="10">CREATOR SIGNATURE</text>
+      <text x="238" y="289" fill="#0f5f3f" font-size="10" font-weight="700">VERIFIED</text>
+      <text x="16" y="311" fill="#53564f" font-size="10">LIVE ACCESS POLICY</text>
+      <text x="238" y="311" fill="#0f5f3f" font-size="10" font-weight="700">BOUND</text>
+      <text x="16" y="333" fill="#53564f" font-size="10">CIPHERTEXT INTEGRITY</text>
+      <text x="238" y="333" fill="#0f5f3f" font-size="10" font-weight="700">AES-256</text>
+    </g>
+
+    <line x1="28" y1="493" x2="362" y2="493" stroke="#141512"/>
+    <text x="28" y="519" fill="#141512" font-family="'Courier New', monospace" font-size="10" font-weight="700" letter-spacing="1.4">PORTABLE • TAMPER-EVIDENT • GASLESS</text>
+    <text x="28" y="539" fill="#0f7d55" font-family="'Courier New', monospace" font-size="10">ecrypt.bittrees.org</text>
+  </g>
+</svg>
