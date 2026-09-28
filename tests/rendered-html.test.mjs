@@ -477,16 +477,22 @@ test("SEO metadata, crawler files, and branded icons are present", async () => {
   assert.match(layoutSource, /https:\/\/ecrypt\.bittrees\.org/);
   assert.match(layoutSource, /Wallet-Gated Text Encryption & Redaction/);
   assert.match(pageSource, /"@type": "WebApplication"/);
+  assert.match(pageSource, /"@type": "WebSite"/);
+  assert.match(pageSource, /softwareVersion: "2\.0\.0"/);
   assert.match(robots, /Sitemap: https:\/\/ecrypt\.bittrees\.org\/sitemap\.xml/);
+  assert.match(robots, /Host: ecrypt\.bittrees\.org/);
   assert.match(sitemap, /<loc>https:\/\/ecrypt\.bittrees\.org\/<\/loc>/);
+  assert.match(sitemap, /<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/);
   assert.equal(manifest.short_name, "eCrypt");
   await Promise.all([
     "public/favicon.ico",
+    "public/favicon.svg",
     "public/favicon-32x32.png",
     "public/apple-touch-icon.png",
     "public/icon-192.png",
     "public/icon.png",
     "public/og.png",
+    "public/social-preview.svg",
   ].map((asset) => access(new URL(asset, projectRoot))));
 });
 
