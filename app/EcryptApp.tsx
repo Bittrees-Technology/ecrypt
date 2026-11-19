@@ -714,6 +714,7 @@ function AboutPanel() {
           <span className="eyebrow">Create to reveal</span>
           <h3 id="about-flow-title">How one message moves through eCrypt</h3>
         </div>
+        <p>For a practice document, enter <code>Meet on Tuesday at [[Room 12]].</code> in <strong>Create &amp; redact</strong>. Set a specific-wallet rule for a test recipient, create the redacted text, and send the complete package using <strong>Copy all</strong>. The recipient can read “Meet on Tuesday” immediately and use <strong>Paste &amp; decrypt</strong> with the chosen wallet to reveal “Room 12”.</p>
         <div className="about-flow-grid">
           <article>
             <span>01 / Mark</span>

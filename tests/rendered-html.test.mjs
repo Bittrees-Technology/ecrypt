@@ -232,6 +232,9 @@ test("server-renders the finished eCrypt product", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>eCrypt — Wallet-Gated Text Encryption &amp; Redaction<\/title>/i);
+  const robotsTags = html.match(/<meta name="(?:robots|googlebot)"[^>]*>/gi) ?? [];
+  assert.equal(robotsTags.length, 1);
+  assert.match(robotsTags[0], /name="robots".*content="index, follow, [^"]*max-image-preview:large/i);
   assert.match(html, /Encrypt the redactions/);
   assert.match(html, /Robinhood/);
   assert.doesNotMatch(html, /Robinhood Chain/);
